@@ -1,5 +1,3 @@
-use sodam;
-
 CREATE TABLE `Warehouse_Orders_Log` (
     `log_id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `request_id` BIGINT NOT NULL,
@@ -197,9 +195,9 @@ CREATE TABLE `offline_cancels` (
 );
 
 CREATE TABLE `online_order` (
-    `order_id` VARCHAR(64) NOT NULL PRIMARY KEY,
+    `order_id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
     `online_cart_id` BIGINT NOT NULL,
-    `point_id` BIGINT NOT NULL AUTO_INCREMENT,
+    `point_id` BIGINT NOT NULL,
     `receiver_name` VARCHAR(255) NULL,
     `receiver_address` VARCHAR(255) NOT NULL,
     `status` ENUM('주문 접수', '결제 완료', '배송 준비 중', '배송 중', '배송 완료', '주문 취소') NOT NULL
@@ -311,9 +309,9 @@ CREATE TABLE `Product` (
 );
 
 CREATE TABLE `Offline_Order` (
-    `order_id` VARCHAR(64) NOT NULL PRIMARY KEY,
+    `order_id` BIGINT NOT NULL PRIMARY KEY Auto_increment,
     `offline_cart_id` BIGINT NOT NULL,
-    `point_id` BIGINT NOT NULL AUTO_INCREMENT,
+    `point_id` BIGINT NOT NULL,
     `pay_method` ENUM('카드 결제', '현금 결제') NOT NULL COMMENT '결제 방식',
     `status` ENUM('결제 대기', '결제 완료') NOT NULL COMMENT '결제 상태'
 );
