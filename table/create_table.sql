@@ -211,11 +211,11 @@ CREATE TABLE `online_card` (
     `number` VARCHAR(255) NOT NULL COMMENT '카드번호 마스킹',
     `installment_plan_months` INT NOT NULL DEFAULT 0 COMMENT '할부 개월 수',
     `approve_no` VARCHAR(8) NOT NULL COMMENT '카드사 승인 번호',
-    `use_card_point` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '카드사 포인트 사용 여부',
+    `use_card_point` TINYINT NOT NULL DEFAULT 0 COMMENT '카드사 포인트 사용 여부',
     `card_type` VARCHAR(20) NOT NULL COMMENT '카드 종류',
     `owner_type` VARCHAR(20) NOT NULL COMMENT '카드 소유자 종류',
     `acquire_status` ENUM('READY', 'REQUESTED', 'COMPLETED', 'CANCEL_REQUEST', 'CANCELED') NOT NULL COMMENT '매입 상태',
-    `is_interested_free` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '무이자 할부 적용 여부'
+    `is_interested_free` TINYINT NOT NULL DEFAULT 0 COMMENT '무이자 할부 적용 여부'
 );
 
 CREATE TABLE `Store_Order_Requests` (
@@ -363,14 +363,14 @@ CREATE TABLE `Offline_Payment` (
     `balance_amt` INT NOT NULL COMMENT '취소 가능 잔액',
     `goods_name` VARCHAR(40) NOT NULL COMMENT '상품명',
     `mall_reserved` VARCHAR(500) NULL COMMENT '상점 정보 전달용 필드',
-    `use_escrow` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '에스크로 거래 여부',
+    `use_escrow` TINYINT NOT NULL DEFAULT 0 COMMENT '에스크로 거래 여부',
     `currency` VARCHAR(3) NOT NULL DEFAULT 'KRW' COMMENT '결제 승인 화폐 단위',
     `channel` ENUM('pc', 'mobile') NULL COMMENT '결제 채널',
     `approve_no` VARCHAR(30) NULL COMMENT '제휴사 승인 번호',
     `buyer_name` VARCHAR(30) NULL COMMENT '구매자 명',
     `buyer_tel` VARCHAR(40) NULL COMMENT '구매자 전화번호',
     `buyer_email` VARCHAR(60) NULL COMMENT '구매자 이메일',
-    `issued_cash_receipt` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '현금 영수증 발급 여부',
+    `issued_cash_receipt` TINYINT NOT NULL DEFAULT 0 COMMENT '현금 영수증 발급 여부',
     `receipt_url` VARCHAR(200) NULL COMMENT '매출전표 확인 URL'
 );
 
