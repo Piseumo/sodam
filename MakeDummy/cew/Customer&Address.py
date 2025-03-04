@@ -7,9 +7,7 @@ fake = Faker("ko_KR")  # ✅ 한글 로케일 적용
 
 # MySQL 연결 설정
 conn = mysql.connector.connect(
-    #host="192.168.0.104",      
     host="localhost",      
-    #user="my_user",           
     user="root",           
     password="1234",  
     database="sodam"
@@ -43,7 +41,7 @@ for _ in range(1000):
 # 변경 사항 커밋
 conn.commit()
 
-print("✅ 고객 데이터가 MySQL에 삽입되었습니다!")
+print(" 고객 데이터가 MySQL에 삽입되었습니다!")
 
 # ✅ 2. Delivery Address 테이블에 각 고객당 2개씩 배송지 정보 삽입
 for customer_id in customer_ids:  # ✅ 고객 ID 리스트 순회
@@ -73,4 +71,4 @@ conn.commit()
 cursor.close()
 conn.close()
 
-print("✅ Delivery Address 데이터 삽입 완료!")
+print(" Delivery Address 데이터 삽입 완료!")
