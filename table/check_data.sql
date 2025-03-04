@@ -8,3 +8,8 @@ select count(*) from warehouse_orders_requests;
 
 select count(*) from Store_Order_Requests;
 
+select * from product;
+
+select * from warehouse_inventory;
+
+select * from store_inventory;
