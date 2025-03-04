@@ -49,4 +49,4 @@ insert_delivery_options(10)
 cursor.close()
 db.close()
 
-print("✅ 더미 데이터가 Delivery_Option 테이블에 삽입되었습니다!")
+print(" 더미 데이터가 Delivery_Option 테이블에 삽입되었습니다!")

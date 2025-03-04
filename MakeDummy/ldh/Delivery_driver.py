@@ -26,6 +26,9 @@ def insert_delivery_drivers():
     # '배송 기사'인 직원들이 있을 경우, Delivery_Driver에 데이터 삽입
     if delivery_drivers:
         for employee_id in delivery_drivers:
+            if employee_id == 1:
+                continue  # employee_id가 1인 경우는 건너뛰기
+
             status = random.choices(statuses, weights=status_weights, k=1)[0]  # 확률에 따라 status 선택
             training_check = True  # 트레이닝 체크는 항상 True
             insurance = True

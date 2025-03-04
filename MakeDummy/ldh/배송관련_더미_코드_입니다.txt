@@ -1,4 +1,15 @@
-2025-2-28
-동현 올림;
+-2025-03-04-
 
-트레이닝 옵션 좀 더 손봐야함;(원투원인지?)
+<배송 테이블 완료된 더미 목록>
+
+Delivery_Car.py(외래키 x)
+
+Delivery_driver.py(Employees_id 외래키)
+Training_log.py(driver_id 외래키)
+
+Delivery_option.py(Delivery price_id 외래키)
+Delivery_Review.py(Delivery_id 외래키)
+Delivery_Alarm.py(Delivery_id 외래키)
+
+
+동현 올림;
