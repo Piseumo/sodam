@@ -15,7 +15,8 @@ cursor = db.cursor()
 
 # Delivery_Driver 테이블에 더미 데이터 삽입
 def insert_delivery_drivers():
-    statuses = ['근무가능', '병가', '휴가', '배송중사고']
+    # statuses = ['근무가능', '병가', '휴가', '배송중사고']
+    statuses = ['근무가능']
     status_weights = [0.92, 0.02, 0.04, 0.02]  # 각 상태에 대한 확률(92%, 2%, 4%, 2%)
     zones = ['서구', '동구', '남구', '달서구', '북구', '수성구', '중구']  # 근무 지역
 
