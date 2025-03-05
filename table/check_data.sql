@@ -17,3 +17,5 @@ select count(*) from store_inventory;
 select count(*) from store_order_details;
 
 select count(*) from store_order_logs;
+
+select * from qna;
