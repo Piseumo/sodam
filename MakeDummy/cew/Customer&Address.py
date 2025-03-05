@@ -25,7 +25,7 @@ daegu_districts = ["중구", "동구", "서구", "남구", "북구", "수성구"
 customer_ids = []  
 
 # ✅ 1. 고객 데이터 삽입
-for _ in range(1000):
+for _ in range(1000000):
     name = fake.name()
     email = fake.email()
     phone = "010-" + fake.numerify("####-####")  # ✅ 010으로 시작하는 한국 휴대폰 번호
@@ -47,7 +47,7 @@ print("✅ 고객 데이터가 MySQL에 삽입되었습니다!")
 
 # ✅ 2. Delivery Address 테이블에 각 고객당 2개씩 배송지 정보 삽입
 for customer_id in customer_ids:  # ✅ 고객 ID 리스트 순회
-    for _ in range(2):  # ✅ 고객당 2개씩 주소 추가
+    for _ in range(3):  # ✅ 고객당 2개씩 주소 추가
         city = "대구광역시"
         district = random.choice(daegu_districts)
 
