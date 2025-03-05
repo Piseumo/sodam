@@ -232,7 +232,7 @@ CREATE TABLE `online_payment` (
     `mid` VARCHAR(255) NOT NULL DEFAULT 'tosspayments',
     `last_transaction_key` VARCHAR(64) NOT NULL COMMENT '최초 결제 승인 키',
     `payment_key` VARCHAR(200) NOT NULL COMMENT 'unique',
-    `order_id` VARCHAR(64) NOT NULL,
+    `order_id` BIGINT NOT NULL,
     `order_name` VARCHAR(255) NOT NULL COMMENT '상품명 외 2개',
     `tax_exemption_amount` INT NOT NULL DEFAULT 0 COMMENT '과세 제외 금액',
     `status` ENUM('READY', 'IN_PROGRESS', 'WAITING_FOR_DEPOSIT', 'DONE', 'CANCELED', 'PARTIAL_CANCELED', 'ABORTED', 'EXPIRED') NOT NULL COMMENT '결제 상태',
