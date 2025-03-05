@@ -25,7 +25,7 @@ print("기존 데이터 삭제 완료!")
 
 # ✅ warehouse_id 고정값 설정
 warehouse_id = 1
-store_ids = [2, 3, 4, 5, 6]
+store_ids = [1, 2, 3, 4, 5]
 
 # ✅ 요청 유형 및 상태 ENUM 값
 request_types = ['입고', '출고']
