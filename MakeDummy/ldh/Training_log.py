@@ -54,3 +54,5 @@ insert_training_logs()
 # 연결 종료
 cursor.close()
 db.close()
+
+print("✅ 트레이닝 로그 데이터 삽입 완료!")

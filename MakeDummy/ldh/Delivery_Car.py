@@ -105,3 +105,5 @@ for i in range(15):
 # 커서와 데이터베이스 연결 종료
 cursor.close()
 db.close()
+
+print("✅ 배송차량량 데이터 삽입 완료!")
