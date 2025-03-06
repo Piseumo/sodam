@@ -35,7 +35,7 @@ print("✅ Offline_Cart 데이터 삽입 완료!")
 cursor.execute("SELECT offline_cart_id FROM Offline_Cart")
 offline_cart_ids = [row[0] for row in cursor.fetchall()]
 
-num_offline_order = 100  # 예시: 100개의 데이터
+num_offline_order = 10000  # 예시: 100개의 데이터
 for _ in range(num_offline_order):
     offline_cart_id = random.choice(offline_cart_ids)
     # point_id: 임의의 1~1000 사이 값
