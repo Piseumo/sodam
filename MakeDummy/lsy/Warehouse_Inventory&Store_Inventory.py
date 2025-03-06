@@ -27,7 +27,7 @@ print("기존 데이터 삭제 완료!")
 
 # ✅ 변수 설정
 warehouse_id = 1
-store_ids = [2, 3, 4, 5, 6]
+store_ids = [1, 2, 3, 4, 5]
 product_ids = list(range(1, 101))  # ✅ 상품 ID: 1~100
 
 # ✅ Warehouse_Inventory 데이터 생성 및 삽입 (각 상품 1개씩, 총 100개)

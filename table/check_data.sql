@@ -8,8 +8,14 @@ select count(*) from warehouse_orders_requests;
 
 select count(*) from Store_Order_Requests;
 
-select * from product;
+select count(*) from product;
 
-select * from warehouse_inventory;
+select count(*) from warehouse_inventory;
 
-select * from store_inventory;
+select count(*) from store_inventory;
+
+select count(*) from store_order_details;
+
+select count(*) from store_order_logs;
+
+select * from qna;
