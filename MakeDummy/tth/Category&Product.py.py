@@ -13,6 +13,14 @@ conn = mysql.connector.connect(
 )
 cursor = conn.cursor()
 
+cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+cursor.execute("TRUNCATE TABLE category;")
+cursor.execute("TRUNCATE TABLE product;")
+cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+conn.commit()
+
+print(" 기존 데이터 삭제 완료!")
+
 # 1. Category 데이터 삽입
 categories_data = {
     "식료품": {
