@@ -77,7 +77,7 @@ def generate_random_datetime(start_year=2024):
     
     return random_datetime
 
-for i in range(15):
+for i in range(1000):
     # 가짜 차량 번호 생성
     number = generate_korean_license_plate()
     

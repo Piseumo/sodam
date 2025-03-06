@@ -43,7 +43,7 @@ def insert_delivery_options(num_records):
     db.commit()
 
 # Delivery_Option 테이블에 더미 데이터 삽입 (10개 레코드 삽입 예시)
-insert_delivery_options(10)
+insert_delivery_options(1000)
 
 # 연결 종료
 cursor.close()
