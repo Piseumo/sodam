@@ -1,5 +1,4 @@
 -- 1. 테이블 생성
-create database sodam;
 use sodam;
 
 CREATE TABLE Warehouse_Orders_Log (

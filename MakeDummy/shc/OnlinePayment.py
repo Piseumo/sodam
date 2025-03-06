@@ -13,4 +13,3 @@ conn = mysql.connector.connect(
 )
 
 cursor = conn.cursor()
-

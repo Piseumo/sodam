@@ -167,7 +167,7 @@ def create_online_order_data(online_cart_ids):
         conn.commit()
 
 # 더미 데이터 생성 호출
-create_online_cart_data(10)  # 10개의 온라인 장바구니 데이터 생성
+create_online_cart_data(1000000)  # 10개의 온라인 장바구니 데이터 생성
 
 # 연결 종료
 cursor.close()
