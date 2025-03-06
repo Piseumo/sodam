@@ -1,4 +1,5 @@
 -- 1. 테이블 생성
+create database sodam;
 use sodam;
 
 CREATE TABLE Warehouse_Orders_Log (
@@ -449,6 +450,7 @@ CREATE TABLE Point (
     point_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     customer_id BIGINT NOT NULL,
     total_amount INT NULL COMMENT '결제 금액',
+    current_points INT NOT NULL COMMENT '현재 포인트',
     type ENUM('Earned', 'Used', 'Expired') NOT NULL COMMENT '포인트 유형',
     delta INT NOT NULL COMMENT '포인트 증감량',
     total_points INT NOT NULL COMMENT '총 포인트',
