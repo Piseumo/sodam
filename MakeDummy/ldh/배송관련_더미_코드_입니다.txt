@@ -1,0 +1,19 @@
+-2025-03-05-
+
+<배송 테이블 완료된 더미 목록>
+
+Delivery_Car.py(외래키 x)
+
+Delivery_driver.py(Employees_id 외래키)
+Training_log.py(driver_id 외래키)
+
+Delivery.py(Delivery_driver_id 외래키, Delivery_Car_id 외래키, online_payment_id 외래키)
+Delivery_Price.py(Delivery_id 외래키)
+Delivery_option.py(Delivery_price_id 외래키)
+
+Delivery_Review.py(Delivery_id 외래키)
+Delivery_Alarm.py(Delivery_id 외래키)
+Delivery_return.py(Delivery_id 외래키)
+Delivery_accident_log.py(Delivery_id 외래키, Employees_id 외래키)
+
+동현 올림;

@@ -2,7 +2,7 @@ import mysql.connector
 from faker import Faker
 import random
 
-fake = Faker("ko_KR")  # 한글 로케일 적용
+fake = Faker("ko_KR")
 
 # MySQL 연결 설정
 conn = mysql.connector.connect(
