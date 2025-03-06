@@ -13,8 +13,16 @@ conn = mysql.connector.connect(
 )
 cursor = conn.cursor()
 
+cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+cursor.execute("TRUNCATE TABLE offline_card;")
+cursor.execute("TRUNCATE TABLE offline_cancels;")
+cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+conn.commit()
+
+print(" 기존 데이터 삭제 완료!")
+
 # ---------- Offline_Card 더미 데이터 삽입 ----------
-num_offline_card = 100  # 예시: 100개 데이터
+num_offline_card = 1100000  # 예시: 100개 데이터
 card_codes = ["BC1", "SH2", "KM3", "WR4", "LG5"]  # 3자리 코드 예시
 card_names = ["비씨", "신한", "국민", "우리", "하나"]
 acqu_card_codes = ["AC1", "AC2", "AC3", "AC4", "AC5"]
@@ -46,7 +54,7 @@ conn.commit()
 print("✅ Offline_Card 데이터 삽입 완료!")
 
 # ---------- offline_cancels 더미 데이터 삽입 ----------
-num_offline_cancels = 100  # 예시: 100개 데이터
+num_offline_cancels = 100000  # 예시: 100개 데이터
 cancel_reasons = ["고객 요청", "상품 품절", "시스템 오류", "취소 요청", "기타"]
 
 for _ in range(num_offline_cancels):

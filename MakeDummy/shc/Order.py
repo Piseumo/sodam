@@ -19,7 +19,7 @@ def create_online_cart_data(num_entries=10):
     online_cart_ids = []  # 생성된 online_cart_id를 저장할 리스트
     for _ in range(num_entries):
         # customer 테이블에서 임의로 customer_id를 가져옵니다.
-        cursor.execute("SELECT id FROM customer ORDER BY RAND() LIMIT 1")
+        cursor.execute("SELECT customer_id FROM customer ORDER BY RAND() LIMIT 1")
         customer_id = cursor.fetchone()[0]  # 첫 번째 열 값(즉, customer_id) 가져오기
         
         # 온라인 장바구니 삽입
@@ -167,7 +167,7 @@ def create_online_order_data(online_cart_ids):
         conn.commit()
 
 # 더미 데이터 생성 호출
-create_online_cart_data(1000000)  # 10개의 온라인 장바구니 데이터 생성
+create_online_cart_data(1000000)
 
 # 연결 종료
 cursor.close()

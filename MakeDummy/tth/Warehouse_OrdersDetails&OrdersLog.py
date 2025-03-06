@@ -31,7 +31,7 @@ if not product_ids:
     # 만약 Product 테이블에 데이터가 없다면, 임의의 product_id 목록 생성 (예: 1~100000)
     product_ids = list(range(1, 100001))
 
-num_details = 1000  # 예시로 1,000개의 더미 데이터 삽입
+num_details = 100000
 for _ in range(num_details):
     req_id = random.choice(request_ids)
     prod_id = random.choice(product_ids)
@@ -51,7 +51,7 @@ print("✅ Warehouse_Orders_Details 데이터 삽입 완료!")
 # 2. Warehouse_Orders_Log 데이터 삽입
 
 statuses = ['요청', '승인', '입고 준비 중', '입고 완료', '출고 준비 중', '출고 완료', '배송 중', '취소']
-num_logs = 1000  # 예시로 1,000개의 더미 데이터 삽입
+num_logs = 500000
 for _ in range(num_logs):
     req_id = random.choice(request_ids)
     status = random.choice(statuses)

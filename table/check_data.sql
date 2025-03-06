@@ -2,6 +2,10 @@ select count(*) from employees;
 
 select count(*) from stores;
 
+select count(*) from customer;
+
+select count(*) from delivery_address;
+
 select count(*) from warehouses;
 
 select count(*) from warehouse_orders_requests;
