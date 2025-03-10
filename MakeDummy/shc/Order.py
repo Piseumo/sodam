@@ -107,19 +107,28 @@ def get_daegu_address():
 
 def create_online_order_data(online_cart_ids):
     for online_cart_id in online_cart_ids:
-        # Online_Cart에서 customer_id 가져오기
+        print(f"Processing online_cart_id: {online_cart_id}")
+
         cursor.execute("""
             SELECT customer_id FROM Online_Cart WHERE online_cart_id = %s
         """, (online_cart_id,))
-        customer_id = cursor.fetchone()[0]  # 해당 장바구니의 customer_id 가져오기
+        customer_row = cursor.fetchone()
+        
+        if not customer_row:
+            print(f"❌ No customer found for online_cart_id {online_cart_id}")
+            continue  
+        customer_id = customer_row[0]
 
-        # 해당 customer_id로 Customer 테이블에서 receiver_name을 조회
         cursor.execute("""
             SELECT name FROM Customer WHERE customer_id = %s
         """, (customer_id,))
-        customer_name = cursor.fetchone()[0]  # 고객의 이름 가져오기
+        customer_row = cursor.fetchone()
+        
+        if not customer_row:
+            print(f"❌ No customer name found for customer_id {customer_id}")
+            continue
+        customer_name = customer_row[0]
 
-        # 해당 customer_id의 배송지 정보 가져오기
         cursor.execute("""
             SELECT city, district, address, address2, postal_code 
             FROM Delivery_Address 
@@ -132,17 +141,16 @@ def create_online_order_data(online_cart_ids):
         if address_row:
             customer_address = f"{address_row[0]} {address_row[1]} {address_row[2]} {address_row[3]} {address_row[4]}"
         else:
-            customer_address = None  # 배송지가 없을 경우 대비
+            print(f"⚠️ No delivery address found for customer_id {customer_id}, using random Daegu address.")
+            customer_address = get_daegu_address()
 
-        # 80% 확률로 고객 본인의 정보 사용, 20% 확률로 랜덤 정보 사용
         if random.random() < 0.8:
-            receiver_name = customer_name  # 고객 본인의 이름 사용
-            receiver_address = customer_address if customer_address else get_daegu_address()  # 고객 기본 배송지 또는 랜덤 대구 주소
+            receiver_name = customer_name
+            receiver_address = customer_address
         else:
-            receiver_name = fake.name()  # 랜덤한 이름 생성
-            receiver_address = get_daegu_address()  # 랜덤한 대구 주소 생성
+            receiver_name = fake.name()
+            receiver_address = get_daegu_address()
 
-        # 고객의 최신 포인트 ID 가져오기
         cursor.execute("""
             SELECT point_id FROM Point 
             WHERE customer_id = %s 
@@ -150,21 +158,23 @@ def create_online_order_data(online_cart_ids):
             LIMIT 1
         """, (customer_id,))
         point_row = cursor.fetchone()
+        point_id = point_row[0] if point_row else None
 
-        if point_row:
-            point_id = point_row[0]  # 가장 최근 포인트 ID 사용
-        else:
-            point_id = None  # 해당 고객의 포인트 내역이 없을 경우 NULL 처리
+        if point_id is None:
+            print(f"⚠️ No point_id found for customer_id {customer_id}, inserting NULL.")
 
-        # 주문 정보 생성
         status = random.choice(['주문 접수', '결제 완료', '배송 준비 중', '배송 중', '배송 완료', '주문 취소'])
 
-        # Online_Order 테이블에 데이터 삽입
-        cursor.execute("""
-            INSERT INTO online_order (online_cart_id, point_id, receiver_name, receiver_address, status)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (online_cart_id, point_id, receiver_name, receiver_address, status))
-        conn.commit()
+        try:
+            cursor.execute("""
+                INSERT INTO online_order (online_cart_id, point_id, receiver_name, receiver_address, status)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (online_cart_id, point_id, receiver_name, receiver_address, status))
+            conn.commit()
+            print(f"✅ Successfully inserted order for cart_id {online_cart_id}")
+        except Exception as e:
+            print(f"❌ Error inserting order for cart_id {online_cart_id}: {e}")
+            conn.rollback()
 
 # 더미 데이터 생성 호출
 create_online_cart_data(1000000)
