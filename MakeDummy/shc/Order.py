@@ -14,6 +14,15 @@ conn = mysql.connector.connect(
 
 cursor = conn.cursor()
 
+# cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+# cursor.execute("TRUNCATE TABLE Online_Cart;")
+# cursor.execute("TRUNCATE TABLE Online_Cart_Product;")
+# cursor.execute("TRUNCATE TABLE online_order;")
+# cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+# conn.commit()
+
+# print(" 기존 데이터 삭제 완료!")
+
 # 더미 데이터 생성 함수
 def create_online_cart_data(num_entries=10):
     online_cart_ids = []  # 생성된 online_cart_id를 저장할 리스트
@@ -179,7 +188,7 @@ def create_online_order_data(online_cart_ids):
             conn.rollback()
 
 # 더미 데이터 생성 호출
-create_online_cart_data(100)
+create_online_cart_data(1)
 
 # 연결 종료
 cursor.close()
