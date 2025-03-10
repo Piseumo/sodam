@@ -19,7 +19,7 @@ def create_online_cart_data(num_entries=10):
     online_cart_ids = []  # 생성된 online_cart_id를 저장할 리스트
     for _ in range(num_entries):
         # customer 테이블에서 임의로 customer_id를 가져옵니다.
-        cursor.execute("SELECT customer_id FROM customer ORDER BY RAND() LIMIT 1")
+        cursor.execute("SELECT customer_id FROM Customer ORDER BY RAND() LIMIT 1")
         customer_id = cursor.fetchone()[0]  # 첫 번째 열 값(즉, customer_id) 가져오기
         
         # 온라인 장바구니 삽입
@@ -86,7 +86,8 @@ def update_total_price(online_cart_id):
         SELECT SUM(quantity * price) FROM Online_Cart_Product
         WHERE online_cart_id = %s
     """, (online_cart_id,))
-    total_price = cursor.fetchone()[0]  # 계산된 총 가격 가져오기
+    
+    total_price = cursor.fetchone()[0] or 0  # `NULL`이 나오면 `0`으로 처리
 
     # `Online_Cart` 테이블에서 total_price 업데이트
     cursor.execute("""
@@ -96,11 +97,12 @@ def update_total_price(online_cart_id):
     """, (total_price, online_cart_id))
     conn.commit()
 
+
 def get_daegu_address():
     city = "대구광역시"  # 대구시 고정
     district = fake.city_suffix()  # 랜덤 구 (중구, 동구, 서구 등)
     address = fake.street_name() + " " + fake.building_number()  # 도로명 + 건물번호
-    address2 = fake.secondary_address()  # 상세주소 (예: 101동 202호)
+    address2 = f"{random.randint(1, 50)}동 {random.randint(101, 1904)}호"  # 직접 생성
     postal_code = fake.postcode()  # 우편번호
     
     return f"{city} {district} {address} {address2} {postal_code}"
@@ -177,7 +179,7 @@ def create_online_order_data(online_cart_ids):
             conn.rollback()
 
 # 더미 데이터 생성 호출
-create_online_cart_data(1000000)
+create_online_cart_data(100)
 
 # 연결 종료
 cursor.close()
