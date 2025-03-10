@@ -17,7 +17,7 @@ cursor = conn.cursor()
 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 
 # ---------- Offline_Cart 데이터 삽입 ----------
-num_offline_cart = 100  # 예시: 100개의 데이터
+num_offline_cart = 1000000  # 예시: 100개의 데이터
 for _ in range(num_offline_cart):
     # c_id: 고객 ID (임의의 1~1000 사이 값)
     c_id = random.randint(1, 1000)
@@ -35,7 +35,7 @@ print("✅ Offline_Cart 데이터 삽입 완료!")
 cursor.execute("SELECT offline_cart_id FROM Offline_Cart")
 offline_cart_ids = [row[0] for row in cursor.fetchall()]
 
-num_offline_order = 10000  # 예시: 100개의 데이터
+num_offline_order = 1000000  # 예시: 100개의 데이터
 for _ in range(num_offline_order):
     offline_cart_id = random.choice(offline_cart_ids)
     # point_id: 임의의 1~1000 사이 값
@@ -66,7 +66,7 @@ cancels_ids = [row[0] for row in cursor.fetchall()]
 if not cancels_ids:
     cancels_ids = list(range(1, 101))
 
-num_offline_payment = 100  # 예시: 100개의 데이터
+num_offline_payment = 800000  # 예시: 100개의 데이터
 for _ in range(num_offline_payment):
     order_id = random.choice(offline_order_ids)
     card_id = random.choice(card_ids)
