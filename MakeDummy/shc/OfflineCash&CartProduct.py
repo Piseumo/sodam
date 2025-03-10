@@ -15,6 +15,8 @@ cursor = conn.cursor()
 
 # 외래키 제약 조건 비활성화
 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+cursor.execute("TRUNCATE TABLE offline_cash;")
+cursor.execute("TRUNCATE TABLE Offline_Cart_Product;")
 
 # 1. Offline_Cash 데이터 삽입
 
@@ -24,7 +26,7 @@ order_ids = [row[0] for row in cursor.fetchall()]
 if not order_ids:
     order_ids = list(range(1, 101))  # 임의 값: 1~100
 
-num_offline_cash = 100  # 예시: 100개의 데이터
+num_offline_cash = 200000  # 예시: 100개의 데이터
 for _ in range(num_offline_cash):
     order_id = random.choice(order_ids)
     # amount: 1000원부터 300,000원 사이, 100원 단위
@@ -62,7 +64,7 @@ inventory_ids = [row[0] for row in cursor.fetchall()]
 if not inventory_ids:
     inventory_ids = list(range(1, 101))  # 임의 값: 1~100
 
-num_cart_products = 100  # 예시: 100개의 데이터
+num_cart_products = 5000000
 for _ in range(num_cart_products):
     offline_cart_id = random.choice(offline_cart_ids)
     inventory_id = random.choice(inventory_ids)
