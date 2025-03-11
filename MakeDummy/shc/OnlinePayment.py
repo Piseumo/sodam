@@ -187,7 +187,7 @@ def insert_fake_data():
             `requested_at`, `approved_at`, `use_escrow`, `culture_expense`, `secret`, `type`, `country`, `failure_code`, 
             `failure_message`, `is_partial_cancelable`, `reciept_url`, `check_out_url`, `currency`, `total_amount`, 
             `balance_amount`, `supplied_amount`, `vat`, `tax_free_amount`, `method`, `version`, `card_id`, `easy_pay_id`, `cancels_id`
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         # vat 계산 (부가세 공식 적용)
