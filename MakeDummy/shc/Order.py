@@ -188,7 +188,7 @@ def create_online_order_data(online_cart_ids):
             conn.rollback()
 
 # 더미 데이터 생성 호출
-create_online_cart_data(1)
+create_online_cart_data(100)
 
 # 연결 종료
 cursor.close()
