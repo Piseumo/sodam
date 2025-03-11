@@ -23,7 +23,7 @@ daegu_districts = ["중구", "동구", "서구", "남구", "북구", "수성구"
 customer_ids = []  
 
 # ✅ 1. 고객 데이터 삽입
-for _ in range(1000):
+for _ in range(500000):
     name = fake.name()
     email = fake.email()
     phone = "010-" + fake.numerify("####-####")  # ✅ 010으로 시작하는 한국 휴대폰 번호

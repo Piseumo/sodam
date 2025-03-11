@@ -8,13 +8,12 @@ fake = Faker('ko_KR')
 
 # MySQL 데이터베이스 연결
 db = mysql.connector.connect(
-    # host="192.168.0.104",  
-    host="192.168.0.9",  
-    port=3306,   
+     host="localhost",  
+    # host="192.168.0.9",  
+    # port=3306,   
     user="root",    
     password="1234", 
     database="sodam"
-    # database=""
 )
 
 # 커서 생성

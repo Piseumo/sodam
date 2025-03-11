@@ -28,11 +28,11 @@ print("기존 데이터 삭제 완료!")
 # ✅ 변수 설정
 warehouse_id = 1
 store_ids = [1, 2, 3, 4, 5]
-product_ids = list(range(1, 101))  # ✅ 상품 ID: 1~100
+product_ids = list(range(1, 1000001))  # ✅ 상품 ID: 1~1,000,000
 
 # ✅ Warehouse_Inventory 데이터 생성 및 삽입 (각 상품 1개씩, 총 100개)
 for product_id in product_ids:
-    quantity = random.randint(10, 500)  # ✅ 창고 재고 수량
+    quantity = random.randint(100, 5000)  # ✅ 창고 재고 수량
     last_updated = fake.date_time_between(start_date="-1y", end_date="now")
 
     sql = """
@@ -52,7 +52,7 @@ for store_id in store_ids:
     selected_products = product_ids  # ✅ 모든 매장이 100개 상품을 가짐
     
     for product_id in selected_products:
-        quantity = random.randint(0, 300)  # ✅ 매장 재고 수량
+        quantity = random.randint(100, 1000)  # ✅ 매장 재고 수량
         last_updated = fake.date_time_between(start_date="-1y", end_date="now")
 
         sql = """

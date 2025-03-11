@@ -27,7 +27,7 @@ cursor = conn.cursor()
 cursor.execute("SELECT product_id FROM Product")
 product_ids = [row[0] for row in cursor.fetchall()]
 
-num_price_entries = 1000  # 예시: 1,000개 데이터 삽입
+num_price_entries = 2000000
 for _ in range(num_price_entries):
     product_id = random.choice(product_ids)
     current_price = random.randrange(1000, 100001, 10)
@@ -56,7 +56,7 @@ print("✅ Product_Price 데이터 삽입 완료!")
 cursor.execute("SELECT price_id FROM Product_Price")
 price_ids = [row[0] for row in cursor.fetchall()]
 
-num_discount_entries = 1000  # 예시: 1,000개 데이터 삽입
+num_discount_entries = 1000000
 for _ in range(num_discount_entries):
     price_id = random.choice(price_ids)
     rate = random.randint(5, 50)
