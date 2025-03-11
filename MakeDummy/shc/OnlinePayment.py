@@ -78,6 +78,13 @@ def insert_fake_data():
         order_id, online_cart_id = order_info
         print(f"Order ID: {order_id}, Online Cart ID: {online_cart_id}")
 
+        # 2. 주문에 결제가 이미 존재하는지 확인
+        cursor.execute("SELECT COUNT(*) FROM online_payment WHERE order_id = %s", (order_id,))
+        payment_exists = cursor.fetchone()[0]
+        if payment_exists > 0:
+            print("이미 결제가 존재하는 주문입니다.")
+            return  # 결제 정보를 다시 추가하지 않음
+
         # 2. 총 금액 (total_amount) 가져오기
         cursor.execute("SELECT total_price FROM Online_Cart WHERE online_cart_id = %s", (online_cart_id,))
         cart_info = cursor.fetchone()
