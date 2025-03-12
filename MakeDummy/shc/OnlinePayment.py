@@ -215,23 +215,31 @@ def insert_fake_data():
         if status in ['CANCELED', 'PARTIAL_CANCELED']:
             cancel_reason = random.choice(["고객 요청으로 취소", "상품 품절", "기타"])
             cancel_status = "DONE"  # 취소 완료 상태
-            transaction_key = generate_unique_payment_key()  # 트랜잭션 키 생성
-            refundable_amount = total_amount  # 환불 금액
+            transaction_key = generate_unique_transaction_key()  # 트랜잭션 키 생성
+            # cancel_amount = random.randint(1, total_amount - 1)  # 환불 금액
+            # refundable_amount = total_amount - cancel_amount  # 환불 후 환불 가능 금액
             canceled_at = fake.date_time_this_year()  # 취소 시간
+
+            if total_amount > 0:
+                cancel_amount = random.randint(1, total_amount - 1)  # 환불 금액
+                refundable_amount = total_amount - cancel_amount  # 환불 후 환불 가능 금액
+            else:
+                cancel_amount = 0
+                refundable_amount = 0
 
             print(f"Cancel Reason: {cancel_reason}, Transaction Key: {transaction_key}, Canceled Amount: {refundable_amount}")
             cursor.execute(""" 
                 INSERT INTO `online_cancels` (
-                    `payment_key`, `cancel_reason`, `cancel_status`, `transaction_key`, `refundable_amount`, `canceled_at`
+                    `cancel_reason`, `cancel_status`, `transaction_key`, `cancel_amount`, `tax_free_amount`, `refundable_amount`, `canceled_at`
                 ) VALUES (%s, %s, %s, %s, %s, %s)
-            """, (payment_key, cancel_reason, cancel_status, transaction_key, refundable_amount, canceled_at))
+            """, (cancel_reason, cancel_status, transaction_key, cancel_amount, 0, refundable_amount, canceled_at))
 
             # 'online_payment' 테이블에서 last_transaction_key를 취소된 transaction_key로 업데이트
             cursor.execute(""" 
                 UPDATE `online_payment`
                 SET `last_transaction_key` = %s
-                WHERE `payment_key` = %s
-            """, (transaction_key, payment_key))
+                WHERE `transaction_key` = %s
+            """, (transaction_key, transaction_key))
 
         conn.commit()
     except Exception as e:
