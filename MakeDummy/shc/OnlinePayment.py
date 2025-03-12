@@ -230,16 +230,24 @@ def insert_fake_data():
             print(f"Cancel Reason: {cancel_reason}, Transaction Key: {transaction_key}, Canceled Amount: {refundable_amount}")
             cursor.execute(""" 
                 INSERT INTO `online_cancels` (
-                    `cancel_reason`, `cancel_status`, `transaction_key`, `cancel_amount`, `tax_free_amount`, `refundable_amount`, `canceled_at`
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-            """, (cancel_reason, cancel_status, transaction_key, cancel_amount, 0, refundable_amount, canceled_at))
+                    `transaction_key`, `cancel_reason`, `tax_exemption_amount`, `canceled_at`,
+                    `transfer_discount_amount`, `easyPay_discount_amount`, `cancel_amount`, 
+                    `tax_free_amount`, `refundable_amount`, `cancel_status`, `cancel_request_id`
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (transaction_key, cancel_reason, 0, canceled_at, 0, 0, cancel_amount, 0, refundable_amount, cancel_status, None))
+
+            # `online_payment` 테이블에서 해당 취소 ID를 업데이트합니다
+            cursor.execute(""" 
+                UPDATE `online_payment`
+                SET `cancels_id` = %s
+                WHERE `order_id` = %s
+            """, (cancels_id, order_id))
 
             # 'online_payment' 테이블에서 last_transaction_key를 취소된 transaction_key로 업데이트
             cursor.execute(""" 
                 UPDATE `online_payment`
                 SET `last_transaction_key` = %s
-                WHERE `transaction_key` = %s
-            """, (transaction_key, transaction_key))
+            """, (transaction_key,))  # 튜플로 감싸서 전달
 
         conn.commit()
     except Exception as e:
