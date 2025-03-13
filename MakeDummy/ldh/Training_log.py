@@ -3,10 +3,9 @@ from faker import Faker
 import random
 
 db = mysql.connector.connect(
-    host="localhost",   
-    # host="192.168.0.9",   
-    # port=3306,  
-    user="root",    
+    host="112.222.157.156",      
+    port= 50006,
+    user="root",           
     password="1234",  
     database="sodam"
 )

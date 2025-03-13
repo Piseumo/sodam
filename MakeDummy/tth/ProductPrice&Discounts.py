@@ -14,9 +14,10 @@ def random_reason(nb_words=6):
 
 # MySQL 연결 설정
 conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="1234",
+    host="112.222.157.156",      
+    port= 50006,
+    user="root",           
+    password="1234",  
     database="sodam"
 )
 cursor = conn.cursor()

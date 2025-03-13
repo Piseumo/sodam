@@ -7,9 +7,10 @@ fake = Faker("ko_KR")  # ✅ 한글 로케일 적용
 
 # MySQL 연결 설정
 conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="1234",
+    host="112.222.157.156",      
+    port= 50006,
+    user="root",           
+    password="1234",  
     database="sodam"
 )
 
@@ -45,8 +46,8 @@ def get_grade_name(accumulated_amount):
     else:
         return "SVIP"
 
-# ✅ 4. Grade 더미 데이터 생성 (약 150만 건)
-target_data_count = 1500000
+# ✅ 4. Grade 더미 데이터 생성 (약 50만 건)
+target_data_count = 500000
 
 for _ in range(target_data_count):
     # ✅ 다양한 고객 그룹에서 고객 ID 선택
