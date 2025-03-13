@@ -93,4 +93,6 @@ CREATE TABLE `online_payment` (
     CONSTRAINT fk_cancels_id FOREIGN KEY (`cancels_id`) REFERENCES `online_cancels` (`cancels_id`)
 );
 
-
+ALTER TABLE `online_card`
+MODIFY COLUMN `issuer_code` VARCHAR(2) NOT NULL COMMENT '카드 발급사 코드',
+MODIFY COLUMN `acquirer_code` VARCHAR(2) NOT NULL COMMENT '카드 매입사 코드';

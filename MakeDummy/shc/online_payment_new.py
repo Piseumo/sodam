@@ -77,22 +77,23 @@ def insert_fake_data():
             print("주문 정보가 없습니다.")
             return
 
+        # 각 주문에 대해 처리
         for order_id, online_cart_id in orders:
-            print(f"Order ID: {order_id}, Online Cart ID: {online_cart_id}")
+            print(f"Processing Order ID: {order_id}, Online Cart ID: {online_cart_id}")
 
             # 2. 주문에 결제가 이미 존재하는지 확인
             cursor.execute("SELECT COUNT(*) FROM online_payment WHERE order_id = %s", (order_id,))
             payment_exists = cursor.fetchone()[0]
             if payment_exists > 0:
-                print("이미 결제가 존재하는 주문입니다.")
-                return  # 결제 정보를 다시 추가하지 않음
+                print(f"Order ID {order_id}에는 이미 결제 정보가 존재합니다.")
+                continue  # 결제 정보가 있으면 다음 주문으로 넘어감
 
-            # 2. 총 금액 (total_amount) 가져오기
+            # 3. 총 금액 (total_amount) 가져오기
             cursor.execute("SELECT total_price FROM Online_Cart WHERE online_cart_id = %s", (online_cart_id,))
             cart_info = cursor.fetchone()
             if not cart_info:
-                print("장바구니 정보가 없습니다.")
-                return
+                print(f"Order ID {order_id}의 장바구니 정보가 없습니다.")
+                continue
 
             total_amount = cart_info[0]
             print(f"Total Amount: {total_amount}")
@@ -198,10 +199,10 @@ def insert_fake_data():
                 `balance_amount`, `supplied_amount`, `vat`, `tax_free_amount`, `method`, `version`, `card_id`, `easy_pay_id`, `cancels_id`
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-
+            
             # vat 계산 (부가세 공식 적용)
             vat = round((total_amount - tax_free_amount) / 11)
-
+            
             values = (
                 mid, last_transaction_key, payment_key, order_id, order_name, tax_exemption_amount, status, requested_at,
                 approved_at, use_escrow, culture_expense, secret, payment_type, country, failure_code,
@@ -212,48 +213,7 @@ def insert_fake_data():
             print(f"Executing query: {query}")
             print(f"With values: {values}")
             cursor.execute(query, values)
-
-            # 결제 취소가 발생했을 경우, 취소 데이터를 'online_cancels' 테이블에 삽입
-            if status in ['CANCELED', 'PARTIAL_CANCELED']:
-                cancel_reason = random.choice(["고객 요청으로 취소", "상품 품절", "기타"])
-                cancel_status = "DONE"  # 취소 완료 상태
-                transaction_key = generate_unique_transaction_key()  # 트랜잭션 키 생성
-                # cancel_amount = random.randint(1, total_amount - 1)  # 환불 금액
-                # refundable_amount = total_amount - cancel_amount  # 환불 후 환불 가능 금액
-                canceled_at = fake.date_time_this_year()  # 취소 시간
-
-                if total_amount > 0:
-                    cancel_amount = random.randint(1, total_amount - 1)  # 환불 금액
-                    refundable_amount = total_amount - cancel_amount  # 환불 후 환불 가능 금액
-                else:
-                    cancel_amount = 0
-                    refundable_amount = 0
-
-                print(f"Cancel Reason: {cancel_reason}, Transaction Key: {transaction_key}, Canceled Amount: {refundable_amount}")
-                cursor.execute(""" 
-                    INSERT INTO `online_cancels` (
-                        `transaction_key`, `cancel_reason`, `tax_exemption_amount`, `canceled_at`,
-                        `transfer_discount_amount`, `easyPay_discount_amount`, `cancel_amount`, 
-                        `tax_free_amount`, `refundable_amount`, `cancel_status`, `cancel_request_id`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (transaction_key, cancel_reason, 0, canceled_at, 0, 0, cancel_amount, 0, refundable_amount, cancel_status, None))
-
-                # 삽입된 'online_cancels' 테이블에서 'cancels_id' 가져오기
-                cancels_id = cursor.lastrowid
-
-                # `online_payment` 테이블에서 해당 취소 ID를 업데이트합니다
-                cursor.execute(""" 
-                    UPDATE `online_payment`
-                    SET `cancels_id` = %s
-                    WHERE `order_id` = %s
-                """, (cancels_id, order_id))
-
-                # 'online_payment' 테이블에서 last_transaction_key를 취소된 transaction_key로 업데이트
-                cursor.execute(""" 
-                    UPDATE `online_payment`
-                    SET `last_transaction_key` = %s
-                """, (transaction_key,))  # 튜플로 감싸서 전달
-
+        
         conn.commit()
     except Exception as e:
         print(f"Error occurred: {e}")
