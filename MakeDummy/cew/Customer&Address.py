@@ -7,7 +7,8 @@ fake = Faker("ko_KR")  # ✅ 한글 로케일 적용
 
 # MySQL 연결 설정
 conn = mysql.connector.connect(
-    host="localhost",      
+    host="112.222.157.156",      
+    port= 50006,
     user="root",           
     password="1234",  
     database="sodam"
@@ -23,14 +24,14 @@ daegu_districts = ["중구", "동구", "서구", "남구", "북구", "수성구"
 customer_ids = []  
 
 # ✅ 1. 고객 데이터 삽입
-for _ in range(500000):
+for _ in range(100000):
     name = fake.name()
     email = fake.email()
     phone = "010-" + fake.numerify("####-####")  # ✅ 010으로 시작하는 한국 휴대폰 번호
     login_type_value = random.choice(login_type)
     password = fake.password() if login_type_value == "Form" else None
 
-    sql = "INSERT INTO customer (name, email, phone, password, login_type) VALUES (%s, %s, %s, %s, %s)"
+    sql = "INSERT INTO Customer (name, email, phone, password, login_type) VALUES (%s, %s, %s, %s, %s)"
     values = (name, email, phone, password, login_type_value)
     
     cursor.execute(sql, values)
@@ -60,7 +61,7 @@ for customer_id in customer_ids:  # ✅ 고객 ID 리스트 순회
         address2 = fake.address_detail()
         postal_code = fake.postcode()
 
-        sql = """INSERT INTO delivery_address (customer_id, city, district, address, address2, postal_code, last_update)
+        sql = """INSERT INTO Delivery_Address (customer_id, city, district, address, address2, postal_code, last_update)
                  VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)"""
         values = (customer_id, city, district, address, address2, postal_code)
 
