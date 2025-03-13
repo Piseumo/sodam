@@ -16,13 +16,23 @@ conn = mysql.connector.connect(
 
 cursor = conn.cursor()
 
+# 카드사 데이터 (issuer_code, acquirer_code로 사용할 값)
+card_companies = [
+    ("기업 BC", "3K"), ("광주은행", "46"), ("롯데카드", "71"), ("한국산업은행", "30"),
+    ("BC카드", "31"), ("삼성카드", "51"), ("새마을금고", "38"), ("신한카드", "41"),
+    ("신협", "62"), ("씨티카드", "36"), ("우리BC카드(BC 매입)", "33"), ("우리카드(우리 매입)", "W1"),
+    ("우체국예금보험", "37"), ("저축은행중앙회", "39"), ("전북은행", "35"), ("제주은행", "42"),
+    ("카카오뱅크", "15"), ("케이뱅크", "3A"), ("토스뱅크", "24"), ("하나카드", "21"),
+    ("현대카드", "61"), ("KB국민카드", "11"), ("NH농협카드", "91"), ("Sh수협은행", "34"),
+]
+
 # 간편결제 제공사 목록
 payment_providers = [
     "TOSSPAY", "NAVERPAY", "SAMSUNGPAY", "APPLEPAY", "LPAY",
     "KAKAOPAY", "PINPAY", "PAYCO", "SSG"
 ]
 
-# 실패 코드 목록
+# failure_code 목록
 failure_codes_messages = {
     'PAY_PROCESS_CANCELED': '결제 처리가 취소 되었습니다.',
     'PAY_PROCESS_ABORTED': '결제 처리가 중단 되었습니다.',
@@ -32,110 +42,189 @@ failure_codes_messages = {
     'UNAUTHORIZED_KEY': '인증되지 않은 키입니다.',
 }
 
-# 랜덤한 유니크한 키 생성 함수
-def generate_unique_key(min_length=20, max_length=200):
+# 랜덤한 유니크한 payment_key 생성
+def generate_unique_payment_key(min_length=20, max_length=200):
+    characters = string.ascii_letters + string.digits
+    length = random.randint(min_length, max_length)
+    return ''.join(random.choices(characters, k=length))
+
+# 고유한 last_transaction_key 생성 함수 (32 ~ 64자, 대소문자 + 숫자)
+def generate_unique_transaction_key(min_length=32, max_length=64):
+    characters = string.ascii_letters + string.digits
+    length = random.randint(min_length, max_length)
+    return ''.join(random.choices(characters, k=length))
+
+# 랜덤한 유니크한 secret 생성
+def generate_unique_secret(min_length=20, max_length=50):
     characters = string.ascii_letters + string.digits
     length = random.randint(min_length, max_length)
     return ''.join(random.choices(characters, k=length))
 
 # 카드 번호 마스킹 처리
 def mask_card_number(card_number):
-    return card_number[:8] + "****" + card_number[-4:-1] + "*"
+    card_number = card_number[:8] + "****" + card_number[-4:-1] + "*"
+    return card_number
 
-# 🟢 더미 데이터 삽입 함수
+# 더미 데이터 삽입 함수
 def insert_fake_data():
-    print("🟢 insert_fake_data() 실행됨")  # ✅ 실행 확인
-
     try:
-        # 1. 주문 정보 가져오기
-        print("🔎 주문 정보 가져오는 중...")
-        cursor.execute("SELECT order_id, online_cart_id FROM online_order ORDER BY RAND() LIMIT 1")
-        order_info = cursor.fetchone()
+        # 1. 모든 주문의 order_id 조회
+        cursor.execute("SELECT order_id, online_cart_id FROM online_order")
+        orders = cursor.fetchall()
         
-        if not order_info:
-            print("❌ 주문 정보가 없습니다.")
+        # 주문이 없으면 종료
+        if not orders:
+            print("주문 정보가 없습니다.")
             return
 
-        order_id, online_cart_id = order_info
-        print(f"✅ 주문 ID: {order_id}, 장바구니 ID: {online_cart_id}")  
+        # 각 주문에 대해 처리
+        for order_id, online_cart_id in orders:
+            print(f"Processing Order ID: {order_id}, Online Cart ID: {online_cart_id}")
 
-        # 2. 총 금액 가져오기
-        print(f"🔎 총 금액 조회: online_cart_id={online_cart_id}")
-        cursor.execute("SELECT total_price FROM Online_Cart WHERE online_cart_id = %s", (online_cart_id,))
-        cart_info = cursor.fetchone()
-        
-        if not cart_info:
-            print("❌ 장바구니 정보가 없습니다.")
-            return
+            # 2. 주문에 결제가 이미 존재하는지 확인
+            cursor.execute("SELECT COUNT(*) FROM online_payment WHERE order_id = %s", (order_id,))
+            payment_exists = cursor.fetchone()[0]
+            if payment_exists > 0:
+                print(f"Order ID {order_id}에는 이미 결제 정보가 존재합니다.")
+                continue  # 결제 정보가 있으면 다음 주문으로 넘어감
 
-        total_amount = cart_info[0]
-        print(f"✅ 총 금액: {total_amount}원")  
+            # 3. 총 금액 (total_amount) 가져오기
+            cursor.execute("SELECT total_price FROM Online_Cart WHERE online_cart_id = %s", (online_cart_id,))
+            cart_info = cursor.fetchone()
+            if not cart_info:
+                print(f"Order ID {order_id}의 장바구니 정보가 없습니다.")
+                continue
 
-        # 결제 관련 데이터 생성
-        mid = 'tosspayments'
-        payment_key = generate_unique_key()
-        order_name = f"{fake.word()} 외 {random.randint(1, 5)}개"
-        method = random.choice(['카드', '간편 결제'])
-        requested_at = fake.date_time_this_year()
-        approved_at = requested_at + timedelta(minutes=random.randint(1, 60)) if random.random() > 0.5 else None
-        balance_amount = total_amount
+            total_amount = cart_info[0]
+            print(f"Total Amount: {total_amount}")
 
-        card_id = None
-        easy_pay_id = None
-        cancels_id = None
+            # 나머지 데이터 삽입 처리
+            mid = 'tosspayments'
+            last_transaction_key = generate_unique_transaction_key()  # UUID로 고유값 생성
+            payment_key = generate_unique_payment_key()
+            order_name = f"{fake.word()} 외 {random.randint(1, 5)}개"
+            tax_exemption_amount = 0
+            use_escrow = 0
+            culture_expense = 0
+            secret = generate_unique_secret()
+            payment_type = 'NORMAL'
+            country = 'KR'
+            failure_code = None
+            failure_message = None
+            is_partial_cancelable = random.choice([0, 1])
+            reciept_url = fake.url()
+            check_out_url = fake.url()
+            currency = 'KRW'
+            supplied_amount = 0
+            tax_free_amount = 0
+            method = random.choice(['카드', '간편 결제'])
+            version = '2022-11-16'
+            card_id = None
+            easy_pay_id = None
+            cancels_id = None
+            balance_amount = total_amount  # 기본적으로 total_amount로 설정
 
-        # 3. 카드 결제 방식
-        if method == '카드':
-            print("💳 카드 결제 정보 생성 중...")
-            card_number = ''.join(random.choices(string.digits, k=16))
-            card_number_masked = mask_card_number(card_number)
-            installment_plan_months = random.randint(0, 18)
-            approve_no = ''.join(random.choices(string.digits, k=8))
+            # 상태 값 설정 추가
+            status = random.choice(['COMPLETED', 'CANCELED', 'PARTIAL_CANCELED', 'PROCESSING'])  # 결제 상태 중 하나를 선택
 
-            cursor.execute(""" 
-                INSERT INTO `online_card` (
-                    `amount`, `issuer_code`, `acquirer_code`, `number`, `installment_plan_months`, 
-                    `approve_no`, `use_card_point`, `card_type`, `owner_type`, `acquire_status`, `is_interested_free`
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (total_amount, "123", "456", card_number_masked, installment_plan_months, approve_no, 0, '신용카드', '개인', 'COMPLETED', 0))
-            cursor.execute("SELECT LAST_INSERT_ID()")
-            card_id = cursor.fetchone()[0]
-            print(f"✅ 카드 결제 ID: {card_id}")
+            requested_at = fake.date_time_this_year()
+            approved_at = requested_at + timedelta(minutes=random.randint(1, 60)) if random.random() > 0.5 else None
 
-        # 4. 간편 결제 방식
-        if method == '간편 결제':
-            print("📱 간편 결제 정보 생성 중...")
-            provider = random.choice(payment_providers)
-            discount_amount = random.randint(0, total_amount // 2)  
-            easy_pay_amount = total_amount - discount_amount
+            print(f"Payment Method: {method}")
+            print(f"Status: {status}")
+            print(f"Payment Key: {payment_key}")
+            print(f"Order Name: {order_name}")
+            print(f"Total Amount: {total_amount}")
+            print(f"Requested At: {requested_at}")
+            print(f"Approved At: {approved_at}")
+            print(f"Tax Exemption Amount: {tax_exemption_amount}")
+            print(f"Use Escrow: {use_escrow}")
+            print(f"Culture Expense: {culture_expense}")
+            print(f"Secret: {secret}")
+            print(f"Payment Type: {payment_type}")
+            print(f"Country: {country}")
+            print(f"Failure Code: {failure_code}")
+            print(f"Failure Message: {failure_message}")
+            print(f"Is Partial Cancelable: {is_partial_cancelable}")
+            print(f"Receipt URL: {reciept_url}")
+            print(f"Check Out URL: {check_out_url}")
+            print(f"Currency: {currency}")
+            print(f"Balance Amount: {balance_amount}")
 
-            cursor.execute(""" 
-                INSERT INTO `Online_Easy_Pay` (`provider`, `amount`, `discount_amount`)
-                VALUES (%s, %s, %s)
-            """, (provider, easy_pay_amount, discount_amount))
-            cursor.execute("SELECT LAST_INSERT_ID()")
-            easy_pay_id = cursor.fetchone()[0]
-            print(f"✅ 간편 결제 ID: {easy_pay_id}")
+            # 카드 테이블에 더미 데이터 삽입
+            if method == '카드':
+                amount = total_amount
+                issuer_code, acquirer_code = random.choice(card_companies)[1], random.choice(card_companies)[1]
+                card_number = ''.join(random.choices(string.digits, k=16))
+                card_number_masked = mask_card_number(card_number)
+                installment_plan_months = random.randint(0, 18)
+                approve_no = ''.join(random.choices(string.digits, k=8))  # 8자리 숫자 승인 번호
+                card_type = random.choice(['신용카드', '체크카드', '기프트카드'])  # 카드 종류 랜덤
+                owner_type = random.choice(['개인', '법인'])  # 카드 소유자 종류 랜덤
+                acquire_status = 'COMPLETED'  # 고정값
+                is_interested_free = 0  # 고정값
+                print(f"Card ID will be generated. Issuer Code: {issuer_code}, Acquirer Code: {acquirer_code}, Card Number: {card_number_masked}")
+                cursor.execute(""" 
+                    INSERT INTO `online_card` (
+                        `amount`, `issuer_code`, `acquirer_code`, `number`, `installment_plan_months`, 
+                        `approve_no`, `use_card_point`, `card_type`, `owner_type`, `acquire_status`, `is_interested_free`
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (amount, issuer_code, acquirer_code, card_number_masked, installment_plan_months, approve_no, 0, card_type, owner_type, acquire_status, is_interested_free))
+                cursor.execute("SELECT LAST_INSERT_ID()")
+                card_id = cursor.fetchone()[0]
+                print(f"Card ID: {card_id}")
 
-        # 5. 결제 정보 삽입
-        print("📝 결제 정보 삽입 중...")
-        cursor.execute("""
+            # 간편 결제에 관련된 더미 데이터 삽입
+            if method == '간편 결제':
+                # 간편결제 금액 계산
+                discount_amount = random.randint(0, total_amount // 2)  # 최대 할인 금액은 total_amount의 절반
+                easy_pay_amount = total_amount - discount_amount
+                provider = random.choice(payment_providers)
+                print(f"Easy Pay provider: {provider}, Easy Pay Amount: {easy_pay_amount}, Discount Amount: {discount_amount}")
+                cursor.execute(""" 
+                    INSERT INTO `Online_Easy_Pay` (
+                        `provider`, `amount`, `discount_amount`
+                    ) VALUES (%s, %s, %s)
+                """, (provider, easy_pay_amount, discount_amount))
+                cursor.execute("SELECT LAST_INSERT_ID()")
+                easy_pay_id = cursor.fetchone()[0]
+                print(f"Easy Pay ID: {easy_pay_id}")
+
+            # `online_payment`에 데이터 삽입
+            query = """
             INSERT INTO `online_payment` (
-                `mid`, `payment_key`, `order_id`, `order_name`, `requested_at`, `approved_at`, 
-                `currency`, `total_amount`, `balance_amount`, `method`, `card_id`, `easy_pay_id`
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (mid, payment_key, order_id, order_name, requested_at, approved_at, 'KRW', total_amount, balance_amount, method, card_id, easy_pay_id))
+                `mid`, `last_transaction_key`, `payment_key`, `order_id`, `order_name`, `tax_exemption_amount`, `status`, 
+                `requested_at`, `approved_at`, `use_escrow`, `culture_expense`, `secret`, `type`, `country`, `failure_code`, 
+                `failure_message`, `is_partial_cancelable`, `reciept_url`, `check_out_url`, `currency`, `total_amount`, 
+                `balance_amount`, `supplied_amount`, `vat`, `tax_free_amount`, `method`, `version`, `card_id`, `easy_pay_id`, `cancels_id`
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            # vat 계산 (부가세 공식 적용)
+            vat = round((total_amount - tax_free_amount) / 11)
+            
+            values = (
+                mid, last_transaction_key, payment_key, order_id, order_name, tax_exemption_amount, status, requested_at,
+                approved_at, use_escrow, culture_expense, secret, payment_type, country, failure_code,
+                failure_message, is_partial_cancelable, reciept_url, check_out_url, currency, total_amount, balance_amount,
+                supplied_amount, vat, tax_free_amount, method, version, card_id, easy_pay_id, cancels_id
+            )
+
+            print(f"Executing query: {query}")
+            print(f"With values: {values}")
+            cursor.execute(query, values)
         
         conn.commit()
-        print("🎉 더미 데이터 삽입 완료!")
-
     except Exception as e:
-        print(f"❌ 오류 발생: {e}")
+        print(f"Error occurred: {e}")
         conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
 
-# 🟢 더미 데이터 생성 실행
+# 데이터 삽입 함수 호출
 insert_fake_data()
 
-# 🟢 연결 종료
+# 연결 종료
 cursor.close()
 conn.close()
