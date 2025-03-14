@@ -8,12 +8,10 @@ fake = Faker('ko_KR')
 
 # MySQL 데이터베이스 연결
 db = mysql.connector.connect(
-     host="localhost",  
-    # host="192.168.0.9",  
-    # port=3306,   
-    user="root",    
-    password="1234", 
-    database="sodam"
+    host="192.168.0.104",  # 데이터베이스 호스트
+    user="my_user",  # 데이터베이스 사용자
+    password="1234",  # 비밀번호
+    database="sodam"  # 사용할 데이터베이스 이름
 )
 
 # 커서 생성
@@ -43,13 +41,15 @@ def generate_alarm_for_status_change(delivery_id, status):
     if status == '배송중':
         cursor.execute("SELECT start_date FROM Delivery WHERE delivery_id = %s", (delivery_id,))
         result = cursor.fetchone()
-        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # start_date가 None이 아니면 해당 값을, None이면 현재 시간을 사용
+        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result and result[0] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     elif status == '배송완료':
         cursor.execute("SELECT end_date FROM Delivery WHERE delivery_id = %s", (delivery_id,))
         result = cursor.fetchone()
-        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # end_date가 None이 아니면 해당 값을, None이면 현재 시간을 사용
+        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result and result[0] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     else:
-        send_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        send_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # 배송중사고 등의 상태는 현재 시간 사용
 
     # 알람 텍스트 생성
     alarm_text = generate_alarm_text(status, send_date)

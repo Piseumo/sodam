@@ -4,10 +4,8 @@ from datetime import datetime, timedelta
 
 # MySQL 연결 설정
 db = mysql.connector.connect(
-    host="localhost",  
-    # host="192.168.0.9",  
-    # port=3306,    
-    user="root",   
+    host="192.168.0.104",  
+    user="my_user",   
     password="1234", 
     database="sodam"
 )
@@ -33,21 +31,30 @@ def insert_delivery_options(num_records):
         current_date = datetime.now()
         random_days = random.randint(0, 365)  # 현재 날짜부터 최대 1년 이내로 랜덤 날짜
         request_datetime = current_date - timedelta(days=random_days)
+
+        # price_id가 이미 Delivery_Option 테이블에 존재하는지 체크
+        cursor.execute("""
+            SELECT COUNT(*) FROM Delivery_Option WHERE price_id = %s
+        """, (price_id,))
+        count = cursor.fetchone()[0]
         
-        # Delivery_Option 테이블에 데이터 삽입
-        query = """
-        INSERT INTO Delivery_Option (price_id, request_datetime)
-        VALUES (%s, %s)
-        """
-        cursor.execute(query, (price_id, request_datetime.strftime('%Y-%m-%d')))
+        # 이미 존재하지 않으면 삽입
+        if count == 0:
+            query = """
+            INSERT INTO Delivery_Option (price_id, request_datetime)
+            VALUES (%s, %s)
+            """
+            cursor.execute(query, (price_id, request_datetime.strftime('%Y-%m-%d')))
+        else:
+            print(f"price_id {price_id}는 이미 Delivery_Option 테이블에 존재합니다. 중복 삽입을 방지합니다.")
     
     db.commit()
 
-# Delivery_Option 테이블에 더미 데이터 삽입 (10개 레코드 삽입 예시)
+# Delivery_Option 테이블에 더미 데이터 삽입 (1000개 레코드 삽입 예시)
 insert_delivery_options(1000)
 
 # 연결 종료
 cursor.close()
 db.close()
 
-print(" 더미 데이터 Delivery_Option 테이블에 삽입되었습니다!")
+print("더미 데이터 Delivery_Option 테이블에 삽입되었습니다!")
