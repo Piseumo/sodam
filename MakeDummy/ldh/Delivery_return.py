@@ -4,18 +4,12 @@ import datetime
 
 # MySQL 연결 설정
 db = mysql.connector.connect(
-<<<<<<< HEAD
-    host="112.222.157.156",      
-    port= 50006,
-    user="root",           
-    password="1234",  
-=======
+
     # host="localhost",  
     host="192.168.0.104",  
     # port=3306,    
     user="my_user",   
     password="1234", 
->>>>>>> LDH
     database="sodam"
 )
 
