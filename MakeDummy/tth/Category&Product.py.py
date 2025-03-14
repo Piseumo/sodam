@@ -15,8 +15,8 @@ conn = mysql.connector.connect(
 cursor = conn.cursor()
 
 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-cursor.execute("TRUNCATE TABLE category;")
-cursor.execute("TRUNCATE TABLE product;")
+cursor.execute("TRUNCATE TABLE Category;")
+cursor.execute("TRUNCATE TABLE Product;")
 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
 conn.commit()
 
@@ -68,7 +68,7 @@ nouns = ["샴푸", "치약", "세탁 세제", "핸드크림", "면도기", "주�
 colors = ["화이트", "블랙", "핑크", "네이비", "골드", "베이지"]
 
 # 3. Product 테이블에 더미 데이터 삽입
-num_products = 1000000
+num_products = 100000
 for _ in range(num_products):
     category_id = random.choice(category_ids)
 
