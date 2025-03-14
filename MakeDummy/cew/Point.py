@@ -17,7 +17,7 @@ conn = mysql.connector.connect(
 cursor = conn.cursor()
 
 # ✅ 1. Customer ID 가져오기 (FK 제약 조건을 위해 기존 데이터 사용)
-cursor.execute("SELECT customer_id FROM customer")
+cursor.execute("SELECT customer_id FROM Customer")
 customer_ids = [row[0] for row in cursor.fetchall()]
 
 # ✅ 고객 ID가 비어있을 때 예외 처리
@@ -27,7 +27,7 @@ if not customer_ids:
 
 # ✅ 2. Earned 포인트 데이터 삽입
 earned_points = []  # Used/Expired 처리를 위한 저장소
-for _ in range(500000):  # 50만 개의 Earned 포인트 생성
+for _ in range(100000):  # 50만 개의 Earned 포인트 생성
     customer_id = random.choice(customer_ids)
     total_amount = random.randint(1000, 1000000)  # ✅ 결제 금액 (1,000원 ~ 1,000,000원)
     delta = random.randint(10, 5000)  # ✅ Earned 포인트 (양수)

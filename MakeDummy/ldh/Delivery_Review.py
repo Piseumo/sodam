@@ -29,21 +29,21 @@ point_weights = [0.01, 0.02, 0.07, 0.7, 0.2]  # 포인트 1, 2, 3, 4, 5의 비�
 
 # 상태별 리뷰 내용
 def generate_good_review():
-    return f"배송이 빠르고 상태가 좋았습니다. {fake.sentence(nb_words=6)}"
+    return f"배송이 빠르고 상태가 좋았습니다."
 
 def generate_neutral_review():
-    return f"배송은 괜찮았지만, 제품에 조금 아쉬운 점이 있었습니다. {fake.sentence(nb_words=6)}"
+    return f"배송은 괜찮았지만, 제품에 조금 아쉬운 점이 있었습니다."
 
 def generate_bad_review():
-    return f"배송이 지연되었고, 제품 상태가 매우 불량했습니다. {fake.sentence(nb_words=6)}"
+    return f"배송이 지연되었고, 제품 상태가 매우 불량했습니다."
 
 # 포인트가 1일 때 부정적인 내용
 def generate_bad_point_review():
-    return f"배송은 예상보다 늦었고, 제품 상태는 최악이었습니다. {fake.sentence(nb_words=6)}"
+    return f"배송은 예상보다 늦었고, 제품 상태는 최악이었습니다."
 
 # 포인트가 3일 때 중립적인 내용
 def generate_neutral_point_review():
-    return f"배송은 적당했지만, 제품 상태는 기대 이하였습니다. {fake.sentence(nb_words=6)}"
+    return f"배송은 적당했지만, 제품 상태는 기대 이하였습니다."
 
 # 리뷰 작성 함수
 def generate_review(delivery_id):
@@ -85,24 +85,26 @@ def generate_review(delivery_id):
         if random.random() < 0.1:  
             delete_date = insert_date + timedelta(days=random.randint(1, 7))  # insert_date보다 나중 날짜
         
-        # delete_date가 존재하는 경우, update_date는 생성하지 않음
-        if delete_date:
-            update_date = None
-        else:
-            # 10% 확률로 update_date 생성 (delete_date가 없는 경우만)
-            if random.random() < 0.1:  
-                update_date = insert_date + timedelta(days=random.randint(1, 7))  # insert_date보다 나중 날짜
+        # 10% 확률로 update_date 생성
+        if random.random() < 0.1:  
+            update_date = insert_date + timedelta(days=random.randint(1, 7))  # insert_date보다 나중 날짜
 
-        # delete_date가 존재하면 update_date는 delete_date와 동일하거나 이전 날짜여야 한다.
-        if update_date and delete_date and update_date > delete_date:
-            update_date = delete_date  # update_date는 delete_date보다 크지 않아야 함
+        # delete_date가 존재하는 경우 update_date를 동일 날짜로 갱신
+        if delete_date:
+            update_date = delete_date
 
         # 데이터 삽입
         cursor.execute(insert_query, (point, content, insert_date, update_date, delete_date, delivery_id))
         db.commit()
 
-# Delivery_Review 테이블에 15개의 더미 데이터 삽입
-cursor.execute("SELECT delivery_id FROM Delivery WHERE status = '배송완료' LIMIT 15")  # '배송완료' 상태의 데이터만 추출
+# 중복되지 않게 '배송완료' 상태의 데이터에서 랜덤으로 15개 추출
+cursor.execute("""
+    SELECT delivery_id 
+    FROM Delivery 
+    WHERE status = '배송완료' 
+    AND delivery_id NOT IN (SELECT DISTINCT delivery_id FROM Delivery_Review)  # 이미 리뷰가 작성된 delivery_id 제외
+    ORDER BY RAND() LIMIT 15
+""")  # '배송완료' 상태에서 리뷰가 없는 랜덤 15개 추출
 delivery_ids = cursor.fetchall()
 
 for delivery_id in delivery_ids:

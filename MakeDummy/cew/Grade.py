@@ -47,7 +47,7 @@ def get_grade_name(accumulated_amount):
         return "SVIP"
 
 # ✅ 4. Grade 더미 데이터 생성 (약 50만 건)
-target_data_count = 500000
+target_data_count = 300000
 
 for _ in range(target_data_count):
     # ✅ 다양한 고객 그룹에서 고객 ID 선택

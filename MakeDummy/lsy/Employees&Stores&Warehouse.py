@@ -129,8 +129,8 @@ warehouse_manager = cursor.lastrowid
 employee_ids.append(warehouse_manager)
 print("물류 관리자 데이터 삽입 완료!")
 
-# ✅ 일반 직원 생성 (총 999994명)
-for _ in range(999994):
+# ✅ 일반 직원 생성 (총 99994명)
+for _ in range(99994):
     name = fake.name()
     phone = "010-" + fake.numerify("####-####")
     email = fake.email()

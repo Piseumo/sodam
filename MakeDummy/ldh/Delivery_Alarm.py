@@ -42,13 +42,15 @@ def generate_alarm_for_status_change(delivery_id, status):
     if status == '배송중':
         cursor.execute("SELECT start_date FROM Delivery WHERE delivery_id = %s", (delivery_id,))
         result = cursor.fetchone()
-        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # start_date가 None이 아니면 해당 값을, None이면 현재 시간을 사용
+        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result and result[0] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     elif status == '배송완료':
         cursor.execute("SELECT end_date FROM Delivery WHERE delivery_id = %s", (delivery_id,))
         result = cursor.fetchone()
-        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # end_date가 None이 아니면 해당 값을, None이면 현재 시간을 사용
+        send_date = result[0].strftime('%Y-%m-%d %H:%M:%S') if result and result[0] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     else:
-        send_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        send_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # 배송중사고 등의 상태는 현재 시간 사용
 
     # 알람 텍스트 생성
     alarm_text = generate_alarm_text(status, send_date)

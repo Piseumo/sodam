@@ -35,7 +35,7 @@ warehouse_statuses = ['요청', '승인', '입고 준비 중', '입고 완료', 
 store_statuses = ['요청', '승인', '출고 중', '출고 완료', '배송 중', '입고 완료', '취소']
 
 # ✅ 더미 데이터 개수 설정
-num_records = 1000000  # ✅ 적절한 데이터 개수로 조정
+num_records = 500000  # ✅ 적절한 데이터 개수로 조정
 
 # ✅ Warehouse_Orders_Requests 데이터 생성 및 삽입
 for _ in range(num_records):
