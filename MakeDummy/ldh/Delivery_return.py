@@ -26,7 +26,7 @@ def insert_delivery_return():
     delivery_data = cursor.fetchall()
 
     # 매장 직원 role인 직원만 선택
-    cursor.execute("SELECT employee_id FROM Employees WHERE role = '매장 직원'")
+    cursor.execute("SELECT employee_id FROM Employees WHERE role = '고객지원'")
     store_employee_ids = [row[0] for row in cursor.fetchall()]
 
     # Delivery_Return 테이블에 데이터 삽입

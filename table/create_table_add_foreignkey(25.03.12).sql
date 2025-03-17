@@ -21,8 +21,6 @@ CREATE TABLE Point (
     date_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '포인트 적립/차감 시간'
 );
 
-
-
 CREATE TABLE Warehouse_Orders_Log (
     log_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     request_id BIGINT NOT NULL,
@@ -510,7 +508,6 @@ ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
 
 -- 2. 외래키 제약 조건 추가
-
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
   FOREIGN KEY (request_id) REFERENCES Warehouse_Orders_Requests(request_id);
