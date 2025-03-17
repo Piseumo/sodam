@@ -371,37 +371,99 @@ SET status = 'partialCancelled', balance_amt = balance_amt - 3000
 WHERE offline_payment_id = 456;
 -- 부분 취소됨 (취소된 수량만큼 매장 재고 복구)
 
-CREATE VIEW Store_Sales_Report AS
+-- 카드 매출만
+CREATE OR REPLACE VIEW Store_Sales_Report_Card AS
 SELECT 
-    si.store_id AS 매장_ID,
-    s.name AS 매장명,
-    DATE(op.paid_at) AS 결제_일자,
-    DATE_FORMAT(op.paid_at, '%Y-%m') AS 결제_월,
-    YEAR(op.paid_at) AS 결제_연도,
-    SUM(op.amount) AS 총_매출액,
-    COUNT(DISTINCT oo.order_id) AS 총_판매_건수,
-    SUM(CASE WHEN op.pay_method = '카드 결제' THEN op.amount ELSE 0 END) AS 카드_결제_매출,
-    SUM(CASE WHEN op.pay_method = '현금 결제' THEN op.amount ELSE 0 END) AS 현금_결제_매출
-FROM Offline_Payment op
-JOIN Offline_Order oo ON op.order_id = oo.order_id
-JOIN Offline_Cart oc ON oo.offline_cart_id = oc.offline_cart_id
-JOIN Offline_Cart_Product ocp ON oc.offline_cart_id = ocp.offline_cart_id
-JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
-JOIN Stores s ON si.store_id = s.store_id
-WHERE op.status = '결제 완료'
-GROUP BY si.store_id, s.name, 결제_일자, 결제_월, 결제_연도;
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(op.amount), 0)) AS '총 카드 매출',
+    DATE(op.paid_at) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Offline_Payment op ON oo.order_id = op.order_id
+WHERE op.status = 'paid'
+GROUP BY s.store_id, s.name, DATE(op.paid_at);
 
--- 특정 매장 일별 매출 보고서 조회
-SELECT * FROM Store_Sales_Report 
-WHERE 결제_일자 = '2025-03-05' 
-AND 매장_ID = 2;
+SELECT * 
+FROM Store_Sales_Report_Card 
+WHERE `결제일` = '2025-03-14'
+AND `매장 ID` = 3;
 
--- 특정 매장 월별 매출 보고서 조회
-SELECT * FROM Store_Sales_Report 
-WHERE 결제_월 = '2025-03' 
-AND 매장_ID = 2;
+SELECT *
+FROM Store_Sales_Report_Card
+WHERE DATE_FORMAT(`결제일`, '%Y-%m') = '2024-04'
+AND `매장 ID` = 3
+order by `결제일`;
 
--- 특정 매장 연도별 매출 보고서 조회
-SELECT * FROM Store_Sales_Report
-WHERE 결제_연도 = '2025'
-AND 매장_ID = 2;
+SELECT 
+    `매장 ID`,
+    `매장 이름`,
+    DATE_FORMAT(`결제일`, '%Y-%m') AS '월',
+    CONCAT('\\ ', FORMAT(SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)), 0)) AS '연도별 총 현금 매출'
+FROM Store_Sales_Report_Card
+WHERE YEAR(`결제일`) = 2024
+AND `매장 ID` = 5
+GROUP BY `매장 ID`, `매장 이름`, DATE_FORMAT(`결제일`, '%Y-%m')
+ORDER BY `월`;
+
+-- 현금 매출만
+CREATE OR REPLACE VIEW Store_Sales_Report_Cash AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    concat('\\ ', FORMAT(SUM(oc.amount), 0)) AS '총 현금 매출',
+    DATE(oc.pay_date) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN offline_cash oc ON oo.order_id = oc.order_id
+WHERE oc.status = 'COMPLETE'
+GROUP BY s.store_id, s.name, DATE(oc.pay_date);
+
+SELECT * 
+FROM Store_Sales_Report_Cash 
+WHERE `결제일` = '2025-03-17'
+AND `매장 ID` = 3;
+
+SELECT *
+FROM Store_Sales_Report_Cash
+WHERE DATE_FORMAT(`결제일`, '%Y-%m') = '2024-04'
+AND `매장 ID` = 3
+order by `결제일`;
+
+SELECT 
+    `매장 ID`,
+    `매장 이름`,
+    CONCAT('\\ ', FORMAT(SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)), 0)) AS '연도별 총 현금 매출',    
+    DATE_FORMAT(`결제일`, '%Y-%m') AS '월'
+FROM Store_Sales_Report_Cash
+WHERE YEAR(`결제일`) = 2024
+AND `매장 ID` = 5
+GROUP BY `매장 ID`, `매장 이름`, DATE_FORMAT(`결제일`, '%Y-%m')
+ORDER BY `월`;
+
+-- 합산 매출
+SELECT 
+    s.store_id,
+    s.name,
+    CONCAT(FORMAT(COALESCE(c.total_card_sales, 0), 0), '원') AS total_card_sales,
+    CONCAT(FORMAT(COALESCE(ca.total_cash_sales, 0), 0), '원') AS total_cash_sales,
+    CONCAT(FORMAT((COALESCE(c.total_card_sales, 0) + COALESCE(ca.total_cash_sales, 0)), 0), '원') AS total_sales,
+    GREATEST(
+        COALESCE(c.last_payment_date, '1900-01-01'),
+        COALESCE(ca.last_payment_date, '1900-01-01')
+    ) AS last_payment_date
+FROM Stores s
+LEFT JOIN (
+    SELECT store_id, SUM(total_card_sales) AS total_card_sales, MAX(last_payment_date) AS last_payment_date
+    FROM Store_Sales_Report_Card
+    GROUP BY store_id
+) c ON s.store_id = c.store_id
+LEFT JOIN (
+    SELECT store_id, SUM(total_cash_sales) AS total_cash_sales, MAX(last_payment_date) AS last_payment_date
+    FROM Store_Sales_Report_Cash
+    GROUP BY store_id
+) ca ON s.store_id = ca.store_id;
