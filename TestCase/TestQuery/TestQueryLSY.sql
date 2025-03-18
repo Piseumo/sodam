@@ -467,3 +467,95 @@ LEFT JOIN (
     FROM Store_Sales_Report_Cash
     GROUP BY store_id
 ) ca ON s.store_id = ca.store_id;
+
+
+
+drop procedure sp_store_sales;
+-- ✅ 매장 매출 통계 프로시저 (카드 + 현금 + 순수 매출)
+DELIMITER $$
+CREATE PROCEDURE sp_store_sales(
+    IN p_store_id BIGINT,
+    IN p_search_type VARCHAR(10), -- day, month, year, custom
+    IN p_payment_method VARCHAR(10), -- 'card', 'cash', 'all'
+    IN p_start_date DATE,
+    IN p_end_date DATE -- custom일 때만 사용, 나머지는 NULL 가능
+)
+BEGIN
+    -- 날짜 포맷 지정
+    DECLARE date_condition VARCHAR(100);
+
+    -- 날짜 조건 생성
+    IF p_search_type = 'day' THEN
+        SET date_condition = CONCAT('DATE(pay_date) = "', p_start_date, '"');
+    ELSEIF p_search_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(pay_date, "%Y-%m") = "', DATE_FORMAT(p_start_date, "%Y-%m"), '"');
+    ELSEIF p_search_type = 'year' THEN
+        SET date_condition = CONCAT('YEAR(pay_date) = "', YEAR(p_start_date), '"');
+    ELSEIF p_search_type = 'custom' THEN
+        SET date_condition = CONCAT('DATE(pay_date) BETWEEN "', p_start_date, '" AND "', p_end_date, '"');
+    END IF;
+
+  -- 메인 쿼리
+SET @query = CONCAT(
+    'SELECT 
+        s.name AS 매장_이름,
+        CASE WHEN ''', p_search_type, ''' = ''year'' THEN DATE_FORMAT(pay_date, "%Y-%m") ELSE DATE(pay_date) END AS 결제일,
+        FORMAT(SUM(CASE WHEN method = ''card'' THEN amount ELSE 0 END), 0) AS 카드_매출,
+        FORMAT(SUM(CASE WHEN method = ''cash'' THEN amount ELSE 0 END), 0) AS 현금_매출,
+        FORMAT(SUM(amount), 0) AS 총_매출,
+        FORMAT(SUM(point_used), 0) AS 포인트_사용_금액,
+        FORMAT(SUM(discount_amount), 0) AS 할인_금액,
+        FORMAT(SUM(amount) - SUM(point_used) - SUM(discount_amount), 0) AS 순수_매출
+    FROM (
+        SELECT 
+            si.store_id, oc.pay_date, ''cash'' AS method, oc.amount, p.delta AS point_used, (ocp.price - pp.final_price) AS discount_amount
+        FROM offline_cash oc
+        JOIN Offline_Order oo ON oc.order_id = oo.order_id
+        JOIN Point p ON oo.point_id = p.point_id
+        JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+        JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+        JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+        JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+        WHERE oc.status = ''COMPLETE''
+
+        UNION ALL
+
+        SELECT 
+            si.store_id, op.paid_at AS pay_date, ''card'' AS method, op.amount, p.delta AS point_used, (ocp.price - pp.final_price) AS discount_amount
+        FROM Offline_Payment op
+        JOIN Offline_Order oo ON op.order_id = oo.order_id
+        JOIN Point p ON oo.point_id = p.point_id
+        JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+        JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+        JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+        JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+        WHERE op.status = ''paid''
+    ) AS sales
+    JOIN Stores s ON sales.store_id = s.store_id
+    WHERE sales.store_id = ', p_store_id, 
+    ' AND ', date_condition
+);
+
+
+    -- 결제수단 필터 추가
+    IF p_payment_method <> 'all' THEN
+        SET @query = CONCAT(@query, ' AND sales.method = "', p_payment_method, '"');
+    END IF;
+
+    -- 그룹화 및 정렬
+    SET @query = CONCAT(@query, ' GROUP BY sales.store_id, 결제일 ORDER BY 결제일');
+
+    -- 디버깅용 출력 (옵션)
+    -- SELECT @query;
+
+    -- 실행
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END $$
+DELIMITER ;
+
+
+CALL sp_store_sales(3, 'day', 'all', '2025-03-17', NULL);
+CALL sp_store_sales(3, 'month', 'cash', '2025-03-01', NULL);
+CALL sp_store_sales(3, 'custom', 'all', '2025-03-01', '2025-03-17');
