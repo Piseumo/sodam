@@ -1,6 +1,6 @@
 import mysql.connector
 import random
-import numpy as np
+# import numpy as np
 
 # MySQL 연결 설정
 db = mysql.connector.connect(
