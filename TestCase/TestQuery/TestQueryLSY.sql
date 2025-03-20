@@ -386,6 +386,26 @@ JOIN Offline_Payment op ON oo.order_id = op.order_id
 WHERE op.status = 'paid'
 GROUP BY s.store_id, s.name, DATE(op.paid_at);
 
+-- 카드 매출 뷰
+CREATE OR REPLACE VIEW Store_Sales_Report_Card AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(op.amount), 0)) AS '총 카드 매출',
+    CONCAT('\\ ', FORMAT(SUM(p.delta), 0)) AS '포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(SUM(ocp.price - pp.final_price), 0)) AS '할인 금액',
+    CONCAT('\\ ', FORMAT(SUM(op.amount) - SUM(p.delta) - SUM(ocp.price - pp.final_price), 0)) AS '순수 매출',
+    DATE(op.paid_at) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Point p ON oo.point_id = p.point_id
+JOIN Offline_Payment op ON oo.order_id = op.order_id
+JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+WHERE op.status = 'paid'
+GROUP BY s.store_id, s.name, DATE(op.paid_at);
+
 SELECT * 
 FROM Store_Sales_Report_Card 
 WHERE `결제일` = '2025-03-14'
@@ -423,6 +443,26 @@ JOIN offline_cash oc ON oo.order_id = oc.order_id
 WHERE oc.status = 'COMPLETE'
 GROUP BY s.store_id, s.name, DATE(oc.pay_date);
 
+-- 현금 매출 뷰
+CREATE OR REPLACE VIEW Store_Sales_Report_Cash AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(oc.amount), 0)) AS '총 현금 매출',
+    CONCAT('\\ ', FORMAT(SUM(p.delta), 0)) AS '포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(SUM(ocp.price - pp.final_price), 0)) AS '할인 금액',
+    CONCAT('\\ ', FORMAT(SUM(oc.amount) - SUM(p.delta) - SUM(ocp.price - pp.final_price), 0)) AS '순수 매출',
+    DATE(oc.pay_date) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Point p ON oo.point_id = p.point_id
+JOIN offline_cash oc ON oo.order_id = oc.order_id
+JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+WHERE oc.status = 'COMPLETE'
+GROUP BY s.store_id, s.name, DATE(oc.pay_date);
+
 SELECT * 
 FROM Store_Sales_Report_Cash 
 WHERE `결제일` = '2025-03-17'
@@ -449,29 +489,62 @@ ORDER BY `월`;
 SELECT 
     s.store_id,
     s.name,
-    CONCAT(FORMAT(COALESCE(c.total_card_sales, 0), 0), '원') AS total_card_sales,
-    CONCAT(FORMAT(COALESCE(ca.total_cash_sales, 0), 0), '원') AS total_cash_sales,
-    CONCAT(FORMAT((COALESCE(c.total_card_sales, 0) + COALESCE(ca.total_cash_sales, 0)), 0), '원') AS total_sales,
+    c.`총 카드 매출`,
+    ca.`총 현금 매출`,
+    CONCAT('\\ ', FORMAT(
+        COALESCE(CAST(REPLACE(REPLACE(c.`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED), 0) +
+        COALESCE(CAST(REPLACE(REPLACE(ca.`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED), 0)
+    , 0)) AS '총 합계 매출',
     GREATEST(
-        COALESCE(c.last_payment_date, '1900-01-01'),
-        COALESCE(ca.last_payment_date, '1900-01-01')
-    ) AS last_payment_date
+        COALESCE(c.last_card_payment_date, '1900-01-01'),
+        COALESCE(ca.last_cash_payment_date, '1900-01-01')
+    ) AS '최근 결제일'
 FROM Stores s
 LEFT JOIN (
-    SELECT `매장 ID`, SUM(total_card_sales) AS total_card_sales, MAX(last_payment_date) AS last_payment_date
+    SELECT `매장 ID`, SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS `총 카드 매출`, MAX(`결제일`) AS last_card_payment_date
     FROM Store_Sales_Report_Card
     GROUP BY `매장 ID`
 ) c ON s.store_id = c.`매장 ID`
 LEFT JOIN (
-    SELECT `매장 ID`, SUM(total_cash_sales) AS total_cash_sales, MAX(last_payment_date) AS last_payment_date
+    SELECT `매장 ID`, SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS `총 현금 매출`, MAX(`결제일`) AS last_cash_payment_date
     FROM Store_Sales_Report_Cash
     GROUP BY `매장 ID`
 ) ca ON s.store_id = ca.`매장 ID`;
 
-UPDATE Offline_Payment 
-SET status = 'paid'
-WHERE offline_payment_id = 456;
-
-UPDATE Offline_Payment 
-SET status = 'partialCancelled', balance_amt = balance_amt - 3000
-WHERE offline_payment_id = 456;
+-- 합산 매출 쿼리
+SELECT 
+    s.store_id,
+    s.name,
+    CONCAT('\\ ', FORMAT(c.total_card_sales, 0)) AS '총 카드 매출',
+    CONCAT('\\ ', FORMAT(ca.total_cash_sales, 0)) AS '총 현금 매출',
+    CONCAT('\\ ', FORMAT(c.total_card_sales + ca.total_cash_sales, 0)) AS '총 합계 매출',
+    CONCAT('\\ ', FORMAT(c.total_card_point + ca.total_cash_point, 0)) AS '총 포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(c.total_card_discount + ca.total_cash_discount, 0)) AS '총 할인 금액',
+    CONCAT('\\ ', FORMAT(
+        (c.total_card_sales + ca.total_cash_sales) - 
+        (c.total_card_point + ca.total_cash_point) - 
+        (c.total_card_discount + ca.total_cash_discount)
+    , 0)) AS '총 순수 매출',
+    GREATEST(
+        COALESCE(c.last_card_payment_date, '1900-01-01'),
+        COALESCE(ca.last_cash_payment_date, '1900-01-01')
+    ) AS '최근 결제일'
+FROM Stores s
+LEFT JOIN (
+    SELECT `매장 ID`,
+        SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_sales,
+        SUM(CAST(REPLACE(REPLACE(`포인트 사용 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_point,
+        SUM(CAST(REPLACE(REPLACE(`할인 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_discount,
+        MAX(`결제일`) AS last_card_payment_date
+    FROM Store_Sales_Report_Card
+    GROUP BY `매장 ID`
+) c ON s.store_id = c.`매장 ID`
+LEFT JOIN (
+    SELECT `매장 ID`,
+        SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_sales,
+        SUM(CAST(REPLACE(REPLACE(`포인트 사용 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_point,
+        SUM(CAST(REPLACE(REPLACE(`할인 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_discount,
+        MAX(`결제일`) AS last_cash_payment_date
+    FROM Store_Sales_Report_Cash
+    GROUP BY `매장 ID`
+) ca ON s.store_id = ca.`매장 ID`;
