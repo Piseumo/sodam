@@ -548,3 +548,188 @@ LEFT JOIN (
     FROM Store_Sales_Report_Cash
     GROUP BY `매장 ID`
 ) ca ON s.store_id = ca.`매장 ID`;
+
+drop procedure sp_store_sales_report;
+
+-- 매출 보고서 프로시저 적용 INDEX
+CREATE INDEX idx_payment_paid_at ON Offline_Payment(paid_at, status);
+
+CREATE INDEX idx_cash_pay_date ON offline_cash(pay_date, status);
+
+CREATE INDEX idx_cart_product ON Offline_Cart_Product(offline_cart_id, inventory_id);
+
+CREATE INDEX idx_store_inventory ON Store_Inventory(inventory_id, store_id);
+
+-- 매출 보고서 프로시저 (검색 엔진)
+DELIMITER //
+
+CREATE PROCEDURE sp_store_sales_report(
+    IN p_store_id BIGINT,
+    IN p_search_type VARCHAR(10),
+    IN p_start_date DATE,
+    IN p_end_date DATE,
+    IN p_method_type VARCHAR(10),
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    -- 날짜 조건 생성
+    IF p_search_type = 'day' THEN
+        SET date_condition = CONCAT('DATE(pay_date) = ''', p_start_date, '''');
+    ELSEIF p_search_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(pay_date, ''%Y-%m'') = DATE_FORMAT(''', p_start_date, ''', ''%Y-%m'')');
+    ELSEIF p_search_type = 'year' THEN
+        SET date_condition = CONCAT('YEAR(pay_date) = YEAR(''', p_start_date, ''')');
+    ELSEIF p_search_type = 'custom' THEN
+        SET date_condition = CONCAT('DATE(pay_date) BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    -- 동적 쿼리 생성
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장_이름,
+            CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(pay_date, "%Y-%m") ELSE DATE(pay_date) END AS 결제일,
+            SUM(CASE WHEN op.offline_payment_id IS NOT NULL THEN op.amount ELSE 0 END) AS 카드_매출,
+            SUM(CASE WHEN oc.offline_cash_id IS NOT NULL THEN oc.amount ELSE 0 END) AS 현금_매출,
+            SUM(IFNULL(op.amount, 0) + IFNULL(oc.amount, 0)) AS 총_매출,
+            SUM(p.delta) AS 포인트_사용_금액,
+            SUM(ocp.price - pp.final_price) AS 할인_금액,
+            SUM(IFNULL(op.amount, 0) + IFNULL(oc.amount, 0) - p.delta - (ocp.price - pp.final_price)) AS 순수_매출
+        FROM Stores s
+        LEFT JOIN Store_Inventory si ON s.store_id = si.store_id
+        LEFT JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+        LEFT JOIN Offline_Cart ocart ON ocp.offline_cart_id = ocart.offline_cart_id
+        LEFT JOIN Offline_Order oo ON ocart.offline_cart_id = oo.offline_cart_id
+        LEFT JOIN Point p ON oo.point_id = p.point_id
+        LEFT JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+        LEFT JOIN Offline_Payment op ON op.order_id = oo.order_id AND op.status = "paid"
+        LEFT JOIN offline_cash oc ON oc.order_id = oo.order_id AND oc.status = "COMPLETE"
+        WHERE s.store_id = ', p_store_id, '
+        AND ', date_condition, '
+        ', CASE WHEN p_method_type = 'card' THEN 'AND op.offline_payment_id IS NOT NULL' 
+                 WHEN p_method_type = 'cash' THEN 'AND oc.offline_cash_id IS NOT NULL' ELSE '' END, '
+        GROUP BY s.name, CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(pay_date, "%Y-%m") ELSE DATE(pay_date) END
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+
+CALL sp_store_sales_report(3, 'year', '2025-01-01', NULL, 'all', '결제일', 'desc');
+-- store_id (매장 ID)
+-- p_search_type ('day', 'month', 'year', 'custom')
+-- p_start_date
+-- p_end_date (day 타입은 NULL)
+-- p_method_type ('all', 'card', 'cash')
+-- p_order_by (정렬할 컬럼)
+-- p_order_dir ('asc', 'desc')
+
+DELIMITER //
+
+CREATE PROCEDURE sp_store_sales_report_explain(
+    IN p_store_id BIGINT,
+    IN p_search_type VARCHAR(10),
+    IN p_start_date DATE,
+    IN p_end_date DATE,
+    IN p_method_type VARCHAR(10),
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    IF p_search_type = 'day' THEN
+        SET date_condition = CONCAT('DATE(formatted_date) = ''', p_start_date, '''');
+    ELSEIF p_search_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(formatted_date, ''%Y-%m'') = DATE_FORMAT(''', p_start_date, ''', ''%Y-%m'')');
+    ELSEIF p_search_type = 'year' THEN
+        SET date_condition = CONCAT('YEAR(formatted_date) = YEAR(''', p_start_date, ''')');
+    ELSEIF p_search_type = 'custom' THEN
+        SET date_condition = CONCAT('DATE(formatted_date) BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장_이름,
+            c.formatted_date AS 결제일,
+            SUM(c.card_amount) AS 카드_매출,
+            SUM(c.cash_amount) AS 현금_매출,
+            SUM(c.card_amount + c.cash_amount) AS 총_매출,
+            SUM(c.point_used) AS 포인트_사용_금액,
+            SUM(c.discount_amount) AS 할인_금액,
+            SUM(c.card_amount + c.cash_amount - c.point_used - c.discount_amount) AS 순수_매출
+        FROM Stores s
+        LEFT JOIN (
+            -- 카드 결제 집계
+            SELECT 
+                si.store_id, 
+                CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(op.paid_at, "%Y-%m") ELSE DATE(op.paid_at) END AS formatted_date,
+                SUM(op.amount) AS card_amount,
+                0 AS cash_amount,
+                SUM(p.delta) AS point_used,
+                SUM(ocp.price - pp.final_price) AS discount_amount
+            FROM Offline_Payment op
+            JOIN Offline_Order oo ON op.order_id = oo.order_id
+            JOIN Point p ON oo.point_id = p.point_id
+            JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+            JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+            JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+            JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+            WHERE op.status = "paid"
+            GROUP BY si.store_id, formatted_date
+
+            UNION ALL
+
+            -- 현금 결제 집계
+            SELECT 
+                si.store_id,
+                CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(oc.pay_date, "%Y-%m") ELSE DATE(oc.pay_date) END AS formatted_date,
+                0 AS card_amount,
+                SUM(oc.amount) AS cash_amount,
+                SUM(p.delta) AS point_used,
+                SUM(ocp.price - pp.final_price) AS discount_amount
+            FROM offline_cash oc
+            JOIN Offline_Order oo ON oc.order_id = oo.order_id
+            JOIN Point p ON oo.point_id = p.point_id
+            JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+            JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+            JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+            JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+            WHERE oc.status = "COMPLETE"
+            GROUP BY si.store_id, formatted_date
+        ) c ON s.store_id = c.store_id
+        WHERE s.store_id = ', p_store_id, '
+        AND ', date_condition, '
+        GROUP BY s.name, c.formatted_date
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    -- EXPLAIN 실행
+    SET @explain_query = CONCAT('EXPLAIN ', @query);
+    PREPARE stmt FROM @explain_query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+CALL sp_store_sales_report_explain(
+    2,
+    'custom',
+    '2025-03-01',
+    '2025-03-15',
+    'all',
+    '순수_매출',
+    'desc'
+);
+
+
+
+
