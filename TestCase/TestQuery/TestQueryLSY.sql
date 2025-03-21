@@ -731,5 +731,223 @@ CALL sp_store_sales_report_explain(
 );
 
 
+CREATE TABLE Store_Sales_Summary (
+    summary_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'PK',
+    store_id BIGINT NOT NULL COMMENT '매장 ID',
+    report_date DATE NOT NULL COMMENT '통계 날짜 (일 단위)',
+    card_sales INT NOT NULL DEFAULT 0 COMMENT '카드 매출',
+    cash_sales INT NOT NULL DEFAULT 0 COMMENT '현금 매출',
+    total_sales INT NOT NULL DEFAULT 0 COMMENT '총 매출',
+    point_used INT NOT NULL DEFAULT 0 COMMENT '포인트 사용 금액',
+    discount_amount INT NOT NULL DEFAULT 0 COMMENT '할인 금액',
+    net_sales INT NOT NULL DEFAULT 0 COMMENT '순수 매출',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '데이터 생성일',
+    UNIQUE KEY uk_store_date (store_id, report_date)
+);
+
+-- 통계 데이터 자정마다 insert
+DELIMITER //
+
+CREATE EVENT IF NOT EXISTS daily_store_sales_summary
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_DATE + INTERVAL 2 DAY
+DO
+BEGIN
+    INSERT INTO Store_Sales_Summary
+        (store_id, report_date, card_sales, cash_sales, total_sales, point_used, discount_amount, net_sales)
+    SELECT
+        si.store_id,
+        CURDATE() AS report_date,
+        SUM(CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) AS card_sales,
+        SUM(CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END) AS cash_sales,
+        SUM(CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) + SUM(CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END) AS total_sales,
+        SUM(p.delta) AS point_used,
+        SUM(CASE WHEN ocp.price > pp.final_price THEN ocp.price - pp.final_price ELSE 0 END) AS discount_amount,
+        SUM(
+            (CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) +
+            (CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END)
+        ) - SUM(p.delta) - SUM(CASE WHEN ocp.price > pp.final_price THEN ocp.price - pp.final_price ELSE 0 END) AS net_sales
+    FROM Offline_Cart_Product ocp
+    JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+    JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+    LEFT JOIN Offline_Cart ocart ON ocp.offline_cart_id = ocart.offline_cart_id
+    LEFT JOIN Offline_Order oo ON ocart.offline_cart_id = oo.offline_cart_id
+    LEFT JOIN Point p ON oo.point_id = p.point_id
+    LEFT JOIN Offline_Payment op ON oo.order_id = op.order_id AND op.status = 'paid' AND DATE(op.paid_at) = CURDATE()
+    LEFT JOIN offline_cash oc ON oo.order_id = oc.order_id AND oc.status = 'COMPLETE' AND DATE(oc.pay_date) = CURDATE()
+    GROUP BY si.store_id;
+END //
+
+DELIMITER ;
+
+SHOW EVENTS;
+
+SELECT count(*) FROM Store_Sales_Summary;
+
+DROP PROCEDURE sp_get_sales_summary_range;
+
+DROP PROCEDURE sp_get_sales_summary_range;
+
+-- 검색 프로시저
+DELIMITER //
+
+CREATE PROCEDURE sp_get_sales_summary_range (
+    IN p_store_id INT,
+    IN p_period_type VARCHAR(10), -- 'day', 'month', 'custom'
+    IN p_start_date DATE,
+    IN p_end_date DATE, -- custom일 때 사용
+    IN p_sales_type VARCHAR(10), -- 'total', 'card', 'cash'
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    -- 날짜 필터 조건 설정
+    IF p_period_type = 'day' THEN
+        SET date_condition = CONCAT('report_date = ''', p_start_date, '''');
+    ELSEIF p_period_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(report_date, "%Y-%m") = DATE_FORMAT(''', p_start_date, ''', "%Y-%m")');
+    ELSEIF p_period_type = 'custom' THEN
+        SET date_condition = CONCAT('report_date BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    -- 동적 쿼리 생성
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장명, 
+            ss.report_date AS 결제일, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END), 0) AS 카드_매출, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END), 0) AS 현금_매출, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END), 0) AS 총_매출, 
+            FORMAT(SUM(ss.point_used), 0) AS 포인트_사용_금액, 
+            FORMAT(SUM(ss.discount_amount), 0) AS 할인_금액, 
+            FORMAT(SUM(ss.net_sales), 0) AS 순수_매출 
+        FROM Store_Sales_Summary ss 
+        JOIN Stores s ON ss.store_id = s.store_id 
+        WHERE ss.store_id = ', p_store_id, ' AND ', date_condition, ' 
+        GROUP BY s.name, ss.report_date 
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    -- 쿼리 실행
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+END //
+
+DELIMITER ;
+
+drop procedure sp_get_sales_summary_year;
+
+DELIMITER //
+
+CREATE PROCEDURE sp_get_sales_summary_year (
+    IN p_store_id INT,
+    IN p_start_date DATE,
+    IN p_sales_type VARCHAR(10), -- 'total', 'card', 'cash'
+    IN p_order_by VARCHAR(50),   -- NULL or alias명
+    IN p_order_dir VARCHAR(4)    -- 'asc', 'desc'
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+    DECLARE order_clause VARCHAR(255);
+
+    -- 1년치 필터 조건 설정
+    SET date_condition = CONCAT('YEAR(report_date) = YEAR(''', p_start_date, ''')');
+
+    -- order by CASE WHEN 매핑
+    IF p_order_by IS NULL OR p_order_by = '' THEN
+        SET order_clause = CONCAT('ORDER BY DATE_FORMAT(ss.report_date, "%Y-%m") ', p_order_dir);
+    ELSEIF p_order_by = '카드_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '현금_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '총_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '포인트_사용_금액' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.point_used) ', p_order_dir);
+    ELSEIF p_order_by = '할인_금액' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.discount_amount) ', p_order_dir);
+    ELSEIF p_order_by = '순수_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.net_sales) ', p_order_dir);
+    ELSE
+        SET order_clause = CONCAT('ORDER BY DATE_FORMAT(ss.report_date, "%Y-%m") ', p_order_dir);
+    END IF;
+
+    -- 동적 쿼리 생성 (월별로 그룹핑)
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장명,
+            DATE_FORMAT(ss.report_date, "%Y-%m") AS 결제월, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END), 0) AS 카드_매출, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END), 0) AS 현금_매출, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END), 0) AS 총_매출, ',
+
+        'FORMAT(SUM(ss.point_used), 0) AS 포인트_사용_금액, ',
+
+        'FORMAT(SUM(ss.discount_amount), 0) AS 할인_금액, ',
+
+        'FORMAT(SUM(ss.net_sales), 0) AS 순수_매출 ',
+
+        'FROM Store_Sales_Summary ss ',
+        'JOIN Stores s ON ss.store_id = s.store_id ',
+        'WHERE ss.store_id = ', p_store_id, ' AND ', date_condition, ' ',
+        'GROUP BY s.name, DATE_FORMAT(ss.report_date, "%Y-%m") ',
+        order_clause
+    );
+
+    -- 쿼리 실행
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+END //
+
+DELIMITER ;
 
 
+
+
+-- 카드
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'card', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'card', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2024-01-01', 'card', '', 'desc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'card', 'report_date', 'desc');
+
+-- 현금
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'cash', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'cash', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2025-01-01', 'cash', '', 'desc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'cash', 'report_date', 'desc');
+
+-- 전체 매출
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'total', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'total', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2025-01-01', 'total', '', 'asc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'total', 'report_date', 'asc');
