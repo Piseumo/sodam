@@ -281,14 +281,15 @@ BEGIN
     END IF;
 
     -- ✅ 부분 취소 시 (PARTIAL_CANCELED) → 취소된 수량만큼 창고 재고 복구
-    IF NEW.status = 'PARTIAL_CANCELED' THEN
-        UPDATE Warehouse_Inventory wi
-        JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
-        JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
-        JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
-        SET wi.quantity = wi.quantity + (NEW.total_amount - NEW.balance_amount) / ocp.price
-        WHERE oo.order_id = NEW.order_id;
-    END IF;
+IF NEW.status = 'PARTIAL_CANCELED' THEN
+    UPDATE Warehouse_Inventory wi
+    JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
+    JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
+    JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
+    SET wi.quantity = wi.quantity + 
+        CASE WHEN ocp.price != 0 THEN (NEW.total_amount - NEW.balance_amount) / ocp.price ELSE 0 END
+    WHERE oo.order_id = NEW.order_id;
+END IF;
 END //
 
 DELIMITER ;
