@@ -1,15 +1,13 @@
 import mysql.connector
 import random
-import numpy as np
+# import numpy as np
 
 # MySQL 연결 설정
 db = mysql.connector.connect(
-
-    # host="localhost",  
-    host="192.168.0.104",  
-    # port=3306,    
-    user="my_user",   
-    password="1234", 
+    host="112.222.157.156",      
+    port= 50006,
+    user="root",           
+    password="1234",  
     database="sodam"
 )
 

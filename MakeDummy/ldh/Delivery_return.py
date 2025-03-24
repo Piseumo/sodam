@@ -4,12 +4,10 @@ import datetime
 
 # MySQL 연결 설정
 db = mysql.connector.connect(
-
-    # host="localhost",  
-    host="192.168.0.104",  
-    # port=3306,    
-    user="my_user",   
-    password="1234", 
+    host="112.222.157.156",      
+    port= 50006,
+    user="root",           
+    password="1234",  
     database="sodam"
 )
 
@@ -23,7 +21,7 @@ def insert_delivery_return():
     return_types = ['재배송', '환불', '교환']
 
     # 매장 직원 role인 직원만 선택
-    cursor.execute("SELECT employee_id FROM Employees WHERE role = '매장 직원'")
+    cursor.execute("SELECT employee_id FROM Employees WHERE role = '고객지원'")
     store_employee_ids = [row[0] for row in cursor.fetchall()]
 
     # 15건씩 반복 처리

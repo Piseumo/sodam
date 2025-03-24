@@ -68,59 +68,886 @@ select * from employee_trigger_log;
 DELIMITER //
 
 CREATE PROCEDURE sp_request_store_order(
-    IN store_id BIGINT, 
-    IN product_id BIGINT, 
-    IN request_quantity INT
+    IN p_store_id BIGINT, 
+    IN p_product_id BIGINT, 
+    IN p_quantity INT
 )
 BEGIN
-    DECLARE available_stock INT;
-    DECLARE max_request INT;
-    
-    -- 해당 상품의 물류센터 총 재고량 조회
-    SELECT quantity INTO available_stock
-    FROM Warehouse_Inventory
-    WHERE product_id = product_id;
-    
-    -- 신청 가능 최대 수량 (물류센터 재고의 10%)
-    SET max_request = available_stock / 10;
+    DECLARE v_available_quantity INT;
+    DECLARE v_request_id BIGINT;
 
-    -- 신청 수량이 10% 제한을 초과하는지 확인
-    IF request_quantity > max_request THEN
+    -- ✅ 1. 물류센터의 총 재고 중 10% 이하만 신청 가능하도록 제한
+    SELECT quantity INTO v_available_quantity
+    FROM Warehouse_Inventory 
+    WHERE product_id = p_product_id;
+
+    IF p_quantity > v_available_quantity * 0.1 THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '신청 수량이 물류센터 재고의 10%를 초과할 수 없습니다.';
-    ELSE
-        -- Store_Order_Requests 테이블에 요청 삽입
-        INSERT INTO Store_Order_Requests (store_id, status, created_at)
-        VALUES (store_id, '요청', NOW());
-        
-        -- 방금 삽입된 request_id 가져오기
-        SET @request_id = LAST_INSERT_ID();
-        
-        -- Store_Order_Details 테이블에 발주 상품 목록 삽입
-        INSERT INTO Store_Order_Details (request_id, product_id, quantity, created_at)
-        VALUES (@request_id, product_id, request_quantity, NOW());
+        SET MESSAGE_TEXT = '요청한 수량이 물류센터 재고의 10%를 초과합니다.';
+    END IF;
 
-        -- Store_Order_Logs 테이블에 기록 추가
+    -- ✅ 2. 매장 발주 요청 테이블에 데이터 삽입
+    INSERT INTO Store_Order_Requests (store_id, quantity, status)
+    VALUES (p_store_id, p_quantity, '요청');
+
+    SET v_request_id = LAST_INSERT_ID(); -- 발주 요청 ID 저장
+
+    -- ✅ 3. Store_Order_Details 테이블에 데이터 삽입
+    INSERT INTO Store_Order_Details (request_id, product_id, quantity)
+    VALUES (v_request_id, p_product_id, p_quantity);
+
+    -- ✅ 4. Store_Order_Logs 테이블에 상태 변경 기록
+    INSERT INTO Store_Order_Logs (request_id, status, changed_at)
+    VALUES (v_request_id, '요청', NOW());
+
+    -- ✅ 5. 물류센터 요청 테이블에도 동기화
+    INSERT INTO Warehouse_Orders_Requests (warehouse_id, type, source, status)
+    VALUES (1, '출고', '매장발주', '요청');
+
+    -- ✅ 6. Warehouse_Orders_Details 테이블에 데이터 삽입
+    INSERT INTO Warehouse_Orders_Details (request_id, product_id, quantity)
+    VALUES (v_request_id, p_product_id, p_quantity);
+
+    -- ✅ 7. Warehouse_Orders_Log 테이블에 상태 변경 기록
+    INSERT INTO Warehouse_Orders_Log (request_id, status, changed_at)
+    VALUES (v_request_id, '요청', NOW());
+
+END //
+
+DELIMITER ;
+
+select * from Store_Order_Requests order by request_id desc;
+
+CALL sp_request_store_order(2, 5, 15); -- store_id, product_id, quantity
+
+select * from Warehouse_Inventory where product_id = 5;
+
+
+DELIMITER //
+-- ✅ 트리거: Warehouse_Orders_Requests 상태 변경 → 매장(Store_Order_Requests) 동기화
+CREATE TRIGGER trg_warehouse_order_status_update
+AFTER UPDATE ON Warehouse_Orders_Requests
+FOR EACH ROW
+BEGIN
+    -- 상태 변경 로그 기록 (Warehouse_Orders_Log)
+    INSERT INTO Warehouse_Orders_Log (request_id, status, changed_at)
+    VALUES (NEW.request_id, NEW.status, NOW());
+
+    -- ✅ 물류센터에서 상태 변경 가능한 값: 승인, 출고 준비 중, 출고 완료, 배송 중
+    IF NEW.status IN ('승인', '출고 준비 중', '출고 완료', '배송 중') THEN
+        UPDATE Store_Order_Requests
+        SET status = NEW.status
+        WHERE request_id = NEW.request_id;
+
+        -- ✅ 매장 발주 상태 변경 로그 기록
         INSERT INTO Store_Order_Logs (request_id, status, changed_at)
-        VALUES (@request_id, '요청', NOW());
+        VALUES (NEW.request_id, NEW.status, NOW());
+    END IF;
 
-        -- Warehouse_Orders_Requests 테이블에 출고 요청 삽입 (자동 처리)
-        INSERT INTO Warehouse_Orders_Requests (warehouse_id, type, source, status, created_at)
-        VALUES (1, '출고', '매장발주', '요청', NOW());
-
-        -- 방금 삽입된 warehouse request_id 가져오기
-        SET @warehouse_request_id = LAST_INSERT_ID();
-
-        -- Warehouse_Orders_Log 테이블에 출고 요청 기록 추가
-        INSERT INTO Warehouse_Orders_Log (request_id, status, changed_at)
-        VALUES (@warehouse_request_id, '요청', NOW());
-
-        -- Warehouse_Orders_Details 테이블에 제품 목록 추가
-        INSERT INTO Warehouse_Orders_Details (request_id, product_id, quantity, created_at)
-        VALUES (@warehouse_request_id, product_id, request_quantity, NOW());
+    -- ✅ 출고 완료 시 물류센터 재고 차감
+    IF NEW.status = '출고 완료' THEN
+        UPDATE Warehouse_Inventory wi
+        JOIN Store_Order_Details sod ON wi.product_id = sod.product_id
+        SET wi.quantity = wi.quantity - sod.quantity
+        WHERE sod.request_id = NEW.request_id;
     END IF;
 END //
 
 DELIMITER ;
 
-CALL sp_request_store_order(2, 5, 15); -- store_id, product_id, quantity
+delimiter //
+
+-- ✅ 트리거: Store_Order_Requests 상태 변경 → 물류센터(Warehouse_Orders_Requests) 동기화
+CREATE TRIGGER trg_store_order_status_update
+AFTER UPDATE ON Store_Order_Requests
+FOR EACH ROW
+BEGIN
+    -- 상태 변경 로그 기록 (Store_Order_Logs)
+    INSERT INTO Store_Order_Logs (request_id, status, changed_at)
+    VALUES (NEW.request_id, NEW.status, NOW());
+
+    -- ✅ 매장에서 상태 변경 가능한 값: 입고 준비 중, 입고 완료
+    IF NEW.status IN ('입고 준비 중', '입고 완료') THEN
+        UPDATE Warehouse_Orders_Requests
+        SET status = NEW.status
+        WHERE request_id = NEW.request_id;
+
+        -- ✅ 물류센터 발주 상태 변경 로그 기록
+        INSERT INTO Warehouse_Orders_Log (request_id, status, changed_at)
+        VALUES (NEW.request_id, NEW.status, NOW());
+    END IF;
+
+    -- ✅ 입고 완료 시 매장 재고 증가
+    IF NEW.status = '입고 완료' THEN
+        UPDATE Store_Inventory si
+        JOIN Store_Order_Details sod ON si.store_id = NEW.store_id AND si.product_id = sod.product_id
+        SET si.quantity = si.quantity + sod.quantity
+        WHERE sod.request_id = NEW.request_id;
+    END IF;
+END //
+
+delimiter ;
+
+delimiter //
+-- ✅ 트리거: Store_Order_Requests 또는 Warehouse_Orders_Requests에서 상태값이 '취소'로 변경되었을 때 동기화
+CREATE TRIGGER trg_order_cancel_sync
+AFTER UPDATE ON Store_Order_Requests
+FOR EACH ROW
+BEGIN
+    -- ✅ 취소 처리: 언제든 가능 (입고 완료 이후는 매장에서만 가능)
+    IF NEW.status = '취소' THEN
+        UPDATE Warehouse_Orders_Requests
+        SET status = '취소'
+        WHERE request_id = NEW.request_id;
+
+        -- ✅ 취소 로그 기록
+        INSERT INTO Store_Order_Logs (request_id, status, changed_at)
+        VALUES (NEW.request_id, '취소', NOW());
+
+        INSERT INTO Warehouse_Orders_Log (request_id, status, changed_at)
+        VALUES (NEW.request_id, '취소', NOW());
+
+        -- ✅ 입고 전에 취소된 경우 → 물류센터 재고 복구
+        IF OLD.status IN ('출고 완료') THEN
+            UPDATE Warehouse_Inventory wi
+            JOIN Store_Order_Details sod ON wi.product_id = sod.product_id
+            SET wi.quantity = wi.quantity + sod.quantity
+            WHERE sod.request_id = NEW.request_id;
+        END IF;
+
+        -- ✅ 입고 후에 취소된 경우 → 매장 재고 차감, 물류센터 재고 복구
+        IF OLD.status = '입고 완료' THEN
+            UPDATE Store_Inventory si
+            JOIN Store_Order_Details sod ON si.store_id = NEW.store_id AND si.product_id = sod.product_id
+            SET si.quantity = si.quantity - sod.quantity
+            WHERE sod.request_id = NEW.request_id;
+
+            UPDATE Warehouse_Inventory wi
+            JOIN Store_Order_Details sod ON wi.product_id = sod.product_id
+            SET wi.quantity = wi.quantity + sod.quantity
+            WHERE sod.request_id = NEW.request_id;
+        END IF;
+    END IF;
+END //
+
+delimiter ;
+
+-- 1️⃣ 승인 처리 (요청 → 승인)
+UPDATE Warehouse_Orders_Requests
+SET status = '승인'
+WHERE request_id = 123;
+
+select * from Store_Order_Logs where request_id = 123;
+
+-- 2️⃣ 출고 준비 중 처리 (승인 → 출고 준비 중)
+UPDATE Warehouse_Orders_Requests
+SET status = '출고 준비 중'
+WHERE request_id = 123;
+
+-- 3️⃣ 출고 완료 처리 (출고 준비 중 → 출고 완료) → 물류센터 재고 차감
+UPDATE Warehouse_Orders_Requests
+SET status = '출고 완료'
+WHERE request_id = 123;
+
+-- 4️⃣ 배송 중 처리 (출고 완료 → 배송 중)
+UPDATE Warehouse_Orders_Requests
+SET status = '취소'
+WHERE request_id = 50001;
+
+DELIMITER //
+
+CREATE TRIGGER trg_online_payment_status_update
+AFTER UPDATE ON online_payment
+FOR EACH ROW
+BEGIN
+    -- ✅ 결제 완료 시 (DONE) → 창고 재고 차감
+    IF NEW.status = 'DONE' THEN
+        UPDATE Warehouse_Inventory wi
+        JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
+        JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
+        JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
+        SET wi.quantity = wi.quantity - ocp.quantity
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+
+    -- ✅ 결제 취소 시 (CANCELED) → 창고 재고 복구
+    IF NEW.status = 'CANCELED' THEN
+        UPDATE Warehouse_Inventory wi
+        JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
+        JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
+        JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
+        SET wi.quantity = wi.quantity + ocp.quantity
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+
+    -- ✅ 부분 취소 시 (PARTIAL_CANCELED) → 취소된 수량만큼 창고 재고 복구
+    IF NEW.status = 'PARTIAL_CANCELED' THEN
+        UPDATE Warehouse_Inventory wi
+        JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
+        JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
+        JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
+        SET wi.quantity = wi.quantity + (NEW.total_amount - NEW.balance_amount) / ocp.price
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+END //
+
+DELIMITER ;
+
+UPDATE online_payment 
+SET status = 'DONE'
+WHERE online_payment_id = 123;
+-- 주문 결제가 완료됨 (창고 재고 차감)
+
+UPDATE online_payment 
+SET status = 'CANCELED'
+WHERE online_payment_id = 123;
+-- 주문이 취소됨 (창고 재고 복구)
+
+UPDATE online_payment 
+SET status = 'PARTIAL_CANCELED', balance_amount = balance_amount - 5000
+WHERE online_payment_id = 123;
+-- 부분 취소됨 (취소된 수량만큼 창고 재고 복구)
+
+-- 각 주문 후 물류센터 재고 확인
+SELECT wi.inventory_id, wi.product_id, wi.quantity
+FROM Warehouse_Inventory wi
+JOIN Online_Cart_Product ocp ON wi.inventory_id = ocp.inventory_id
+JOIN Online_Cart oc ON ocp.online_cart_id = oc.online_cart_id
+JOIN online_order oo ON oc.online_cart_id = oo.online_cart_id
+JOIN online_payment op ON oo.order_id = op.order_id
+WHERE op.online_payment_id = 123;
+
+DELIMITER //
+
+CREATE TRIGGER trg_offline_payment_status_update
+AFTER UPDATE ON Offline_Payment
+FOR EACH ROW
+BEGIN
+    -- ✅ 결제 완료 시 (paid) → 매장 재고 차감
+    IF NEW.status = 'paid' THEN
+        UPDATE Store_Inventory si
+        JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+        JOIN Offline_Cart oc ON ocp.offline_cart_id = oc.offline_cart_id
+        JOIN Offline_Order oo ON oc.offline_cart_id = oo.offline_cart_id
+        SET si.quantity = si.quantity - ocp.quantity
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+
+    -- ✅ 결제 취소 시 (cancelled) → 매장 재고 복구
+    IF NEW.status = 'cancelled' THEN
+        UPDATE Store_Inventory si
+        JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+        JOIN Offline_Cart oc ON ocp.offline_cart_id = oc.offline_cart_id
+        JOIN Offline_Order oo ON oc.offline_cart_id = oo.offline_cart_id
+        SET si.quantity = si.quantity + ocp.quantity
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+
+    -- ✅ 부분 취소 시 (partialCancelled) → 취소된 금액만큼 매장 재고 복구
+    IF NEW.status = 'partialCancelled' THEN
+        UPDATE Store_Inventory si
+        JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+        JOIN Offline_Cart oc ON ocp.offline_cart_id = oc.offline_cart_id
+        JOIN Offline_Order oo ON oc.offline_cart_id = oo.offline_cart_id
+        SET si.quantity = si.quantity + (NEW.amount - NEW.balance_amt) / ocp.price
+        WHERE oo.order_id = NEW.order_id;
+    END IF;
+END //
+
+DELIMITER ;
+
+UPDATE Offline_Payment 
+SET status = 'paid'
+WHERE offline_payment_id = 456;
+-- 결제가 완료됨 (매장 재고 차감)
+
+UPDATE Offline_Payment 
+SET status = 'cancelled'
+WHERE offline_payment_id = 456;
+-- 결제가 취소됨 (매장 재고 복구)
+
+UPDATE Offline_Payment 
+SET status = 'partialCancelled', balance_amt = balance_amt - 3000
+WHERE offline_payment_id = 456;
+-- 부분 취소됨 (취소된 수량만큼 매장 재고 복구)
+
+-- 카드 매출만
+CREATE OR REPLACE VIEW Store_Sales_Report_Card AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(op.amount), 0)) AS '총 카드 매출',
+    DATE(op.paid_at) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Offline_Payment op ON oo.order_id = op.order_id
+WHERE op.status = 'paid'
+GROUP BY s.store_id, s.name, DATE(op.paid_at);
+
+-- 카드 매출 뷰
+CREATE OR REPLACE VIEW Store_Sales_Report_Card AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(op.amount), 0)) AS '총 카드 매출',
+    CONCAT('\\ ', FORMAT(SUM(p.delta), 0)) AS '포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(SUM(ocp.price - pp.final_price), 0)) AS '할인 금액',
+    CONCAT('\\ ', FORMAT(SUM(op.amount) - SUM(p.delta) - SUM(ocp.price - pp.final_price), 0)) AS '순수 매출',
+    DATE(op.paid_at) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Point p ON oo.point_id = p.point_id
+JOIN Offline_Payment op ON oo.order_id = op.order_id
+JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+WHERE op.status = 'paid'
+GROUP BY s.store_id, s.name, DATE(op.paid_at);
+
+SELECT * 
+FROM Store_Sales_Report_Card 
+WHERE `결제일` = '2025-03-14'
+AND `매장 ID` = 3;
+
+SELECT *
+FROM Store_Sales_Report_Card
+WHERE DATE_FORMAT(`결제일`, '%Y-%m') = '2024-04'
+AND `매장 ID` = 3
+order by `결제일`;
+
+SELECT 
+    `매장 ID`,
+    `매장 이름`,
+    DATE_FORMAT(`결제일`, '%Y-%m') AS '월',
+    CONCAT('\\ ', FORMAT(SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)), 0)) AS '연도별 총 현금 매출'
+FROM Store_Sales_Report_Card
+WHERE YEAR(`결제일`) = 2024
+AND `매장 ID` = 5
+GROUP BY `매장 ID`, `매장 이름`, DATE_FORMAT(`결제일`, '%Y-%m')
+ORDER BY `월`;
+
+-- 현금 매출만
+CREATE OR REPLACE VIEW Store_Sales_Report_Cash AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    concat('\\ ', FORMAT(SUM(oc.amount), 0)) AS '총 현금 매출',
+    DATE(oc.pay_date) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN offline_cash oc ON oo.order_id = oc.order_id
+WHERE oc.status = 'COMPLETE'
+GROUP BY s.store_id, s.name, DATE(oc.pay_date);
+
+-- 현금 매출 뷰
+CREATE OR REPLACE VIEW Store_Sales_Report_Cash AS
+SELECT 
+    s.store_id AS '매장 ID',
+    s.name AS '매장 이름',
+    CONCAT('\\ ', FORMAT(SUM(oc.amount), 0)) AS '총 현금 매출',
+    CONCAT('\\ ', FORMAT(SUM(p.delta), 0)) AS '포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(SUM(ocp.price - pp.final_price), 0)) AS '할인 금액',
+    CONCAT('\\ ', FORMAT(SUM(oc.amount) - SUM(p.delta) - SUM(ocp.price - pp.final_price), 0)) AS '순수 매출',
+    DATE(oc.pay_date) AS '결제일'
+FROM Stores s
+JOIN Store_Inventory si ON s.store_id = si.store_id
+JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+JOIN Offline_Order oo ON ocp.offline_cart_id = oo.offline_cart_id
+JOIN Point p ON oo.point_id = p.point_id
+JOIN offline_cash oc ON oo.order_id = oc.order_id
+JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+WHERE oc.status = 'COMPLETE'
+GROUP BY s.store_id, s.name, DATE(oc.pay_date);
+
+SELECT * 
+FROM Store_Sales_Report_Cash 
+WHERE `결제일` = '2025-03-17'
+AND `매장 ID` = 3;
+
+SELECT *
+FROM Store_Sales_Report_Cash
+WHERE DATE_FORMAT(`결제일`, '%Y-%m') = '2024-04'
+AND `매장 ID` = 3
+order by `결제일`;
+
+SELECT 
+    `매장 ID`,
+    `매장 이름`,
+    CONCAT('\\ ', FORMAT(SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)), 0)) AS '연도별 총 현금 매출',    
+    DATE_FORMAT(`결제일`, '%Y-%m') AS '월'
+FROM Store_Sales_Report_Cash
+WHERE YEAR(`결제일`) = 2024
+AND `매장 ID` = 5
+GROUP BY `매장 ID`, `매장 이름`, DATE_FORMAT(`결제일`, '%Y-%m')
+ORDER BY `월`;
+
+-- 합산 매출
+SELECT 
+    s.store_id,
+    s.name,
+    c.`총 카드 매출`,
+    ca.`총 현금 매출`,
+    CONCAT('\\ ', FORMAT(
+        COALESCE(CAST(REPLACE(REPLACE(c.`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED), 0) +
+        COALESCE(CAST(REPLACE(REPLACE(ca.`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED), 0)
+    , 0)) AS '총 합계 매출',
+    GREATEST(
+        COALESCE(c.last_card_payment_date, '1900-01-01'),
+        COALESCE(ca.last_cash_payment_date, '1900-01-01')
+    ) AS '최근 결제일'
+FROM Stores s
+LEFT JOIN (
+    SELECT `매장 ID`, SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS `총 카드 매출`, MAX(`결제일`) AS last_card_payment_date
+    FROM Store_Sales_Report_Card
+    GROUP BY `매장 ID`
+) c ON s.store_id = c.`매장 ID`
+LEFT JOIN (
+    SELECT `매장 ID`, SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS `총 현금 매출`, MAX(`결제일`) AS last_cash_payment_date
+    FROM Store_Sales_Report_Cash
+    GROUP BY `매장 ID`
+) ca ON s.store_id = ca.`매장 ID`;
+
+-- 합산 매출 쿼리
+SELECT 
+    s.store_id,
+    s.name,
+    CONCAT('\\ ', FORMAT(c.total_card_sales, 0)) AS '총 카드 매출',
+    CONCAT('\\ ', FORMAT(ca.total_cash_sales, 0)) AS '총 현금 매출',
+    CONCAT('\\ ', FORMAT(c.total_card_sales + ca.total_cash_sales, 0)) AS '총 합계 매출',
+    CONCAT('\\ ', FORMAT(c.total_card_point + ca.total_cash_point, 0)) AS '총 포인트 사용 금액',
+    CONCAT('\\ ', FORMAT(c.total_card_discount + ca.total_cash_discount, 0)) AS '총 할인 금액',
+    CONCAT('\\ ', FORMAT(
+        (c.total_card_sales + ca.total_cash_sales) - 
+        (c.total_card_point + ca.total_cash_point) - 
+        (c.total_card_discount + ca.total_cash_discount)
+    , 0)) AS '총 순수 매출',
+    GREATEST(
+        COALESCE(c.last_card_payment_date, '1900-01-01'),
+        COALESCE(ca.last_cash_payment_date, '1900-01-01')
+    ) AS '최근 결제일'
+FROM Stores s
+LEFT JOIN (
+    SELECT `매장 ID`,
+        SUM(CAST(REPLACE(REPLACE(`총 카드 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_sales,
+        SUM(CAST(REPLACE(REPLACE(`포인트 사용 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_point,
+        SUM(CAST(REPLACE(REPLACE(`할인 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_card_discount,
+        MAX(`결제일`) AS last_card_payment_date
+    FROM Store_Sales_Report_Card
+    GROUP BY `매장 ID`
+) c ON s.store_id = c.`매장 ID`
+LEFT JOIN (
+    SELECT `매장 ID`,
+        SUM(CAST(REPLACE(REPLACE(`총 현금 매출`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_sales,
+        SUM(CAST(REPLACE(REPLACE(`포인트 사용 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_point,
+        SUM(CAST(REPLACE(REPLACE(`할인 금액`, '\\ ', ''), ',', '') AS UNSIGNED)) AS total_cash_discount,
+        MAX(`결제일`) AS last_cash_payment_date
+    FROM Store_Sales_Report_Cash
+    GROUP BY `매장 ID`
+) ca ON s.store_id = ca.`매장 ID`;
+
+drop procedure sp_store_sales_report;
+
+-- 매출 보고서 프로시저 적용 INDEX
+CREATE INDEX idx_payment_paid_at ON Offline_Payment(paid_at, status);
+
+CREATE INDEX idx_cash_pay_date ON offline_cash(pay_date, status);
+
+CREATE INDEX idx_cart_product ON Offline_Cart_Product(offline_cart_id, inventory_id);
+
+CREATE INDEX idx_store_inventory ON Store_Inventory(inventory_id, store_id);
+
+-- 매출 보고서 프로시저 (검색 엔진)
+DELIMITER //
+
+CREATE PROCEDURE sp_store_sales_report(
+    IN p_store_id BIGINT,
+    IN p_search_type VARCHAR(10),
+    IN p_start_date DATE,
+    IN p_end_date DATE,
+    IN p_method_type VARCHAR(10),
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    -- 날짜 조건 생성
+    IF p_search_type = 'day' THEN
+        SET date_condition = CONCAT('DATE(pay_date) = ''', p_start_date, '''');
+    ELSEIF p_search_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(pay_date, ''%Y-%m'') = DATE_FORMAT(''', p_start_date, ''', ''%Y-%m'')');
+    ELSEIF p_search_type = 'year' THEN
+        SET date_condition = CONCAT('YEAR(pay_date) = YEAR(''', p_start_date, ''')');
+    ELSEIF p_search_type = 'custom' THEN
+        SET date_condition = CONCAT('DATE(pay_date) BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    -- 동적 쿼리 생성
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장_이름,
+            CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(pay_date, "%Y-%m") ELSE DATE(pay_date) END AS 결제일,
+            SUM(CASE WHEN op.offline_payment_id IS NOT NULL THEN op.amount ELSE 0 END) AS 카드_매출,
+            SUM(CASE WHEN oc.offline_cash_id IS NOT NULL THEN oc.amount ELSE 0 END) AS 현금_매출,
+            SUM(IFNULL(op.amount, 0) + IFNULL(oc.amount, 0)) AS 총_매출,
+            SUM(p.delta) AS 포인트_사용_금액,
+            SUM(ocp.price - pp.final_price) AS 할인_금액,
+            SUM(IFNULL(op.amount, 0) + IFNULL(oc.amount, 0) - p.delta - (ocp.price - pp.final_price)) AS 순수_매출
+        FROM Stores s
+        LEFT JOIN Store_Inventory si ON s.store_id = si.store_id
+        LEFT JOIN Offline_Cart_Product ocp ON si.inventory_id = ocp.inventory_id
+        LEFT JOIN Offline_Cart ocart ON ocp.offline_cart_id = ocart.offline_cart_id
+        LEFT JOIN Offline_Order oo ON ocart.offline_cart_id = oo.offline_cart_id
+        LEFT JOIN Point p ON oo.point_id = p.point_id
+        LEFT JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+        LEFT JOIN Offline_Payment op ON op.order_id = oo.order_id AND op.status = "paid"
+        LEFT JOIN offline_cash oc ON oc.order_id = oo.order_id AND oc.status = "COMPLETE"
+        WHERE s.store_id = ', p_store_id, '
+        AND ', date_condition, '
+        ', CASE WHEN p_method_type = 'card' THEN 'AND op.offline_payment_id IS NOT NULL' 
+                 WHEN p_method_type = 'cash' THEN 'AND oc.offline_cash_id IS NOT NULL' ELSE '' END, '
+        GROUP BY s.name, CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(pay_date, "%Y-%m") ELSE DATE(pay_date) END
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+
+CALL sp_store_sales_report(3, 'year', '2025-01-01', NULL, 'all', '결제일', 'desc');
+-- store_id (매장 ID)
+-- p_search_type ('day', 'month', 'year', 'custom')
+-- p_start_date
+-- p_end_date (day 타입은 NULL)
+-- p_method_type ('all', 'card', 'cash')
+-- p_order_by (정렬할 컬럼)
+-- p_order_dir ('asc', 'desc')
+
+DELIMITER //
+
+CREATE PROCEDURE sp_store_sales_report_explain(
+    IN p_store_id BIGINT,
+    IN p_search_type VARCHAR(10),
+    IN p_start_date DATE,
+    IN p_end_date DATE,
+    IN p_method_type VARCHAR(10),
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    IF p_search_type = 'day' THEN
+        SET date_condition = CONCAT('DATE(formatted_date) = ''', p_start_date, '''');
+    ELSEIF p_search_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(formatted_date, ''%Y-%m'') = DATE_FORMAT(''', p_start_date, ''', ''%Y-%m'')');
+    ELSEIF p_search_type = 'year' THEN
+        SET date_condition = CONCAT('YEAR(formatted_date) = YEAR(''', p_start_date, ''')');
+    ELSEIF p_search_type = 'custom' THEN
+        SET date_condition = CONCAT('DATE(formatted_date) BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장_이름,
+            c.formatted_date AS 결제일,
+            SUM(c.card_amount) AS 카드_매출,
+            SUM(c.cash_amount) AS 현금_매출,
+            SUM(c.card_amount + c.cash_amount) AS 총_매출,
+            SUM(c.point_used) AS 포인트_사용_금액,
+            SUM(c.discount_amount) AS 할인_금액,
+            SUM(c.card_amount + c.cash_amount - c.point_used - c.discount_amount) AS 순수_매출
+        FROM Stores s
+        LEFT JOIN (
+            -- 카드 결제 집계
+            SELECT 
+                si.store_id, 
+                CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(op.paid_at, "%Y-%m") ELSE DATE(op.paid_at) END AS formatted_date,
+                SUM(op.amount) AS card_amount,
+                0 AS cash_amount,
+                SUM(p.delta) AS point_used,
+                SUM(ocp.price - pp.final_price) AS discount_amount
+            FROM Offline_Payment op
+            JOIN Offline_Order oo ON op.order_id = oo.order_id
+            JOIN Point p ON oo.point_id = p.point_id
+            JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+            JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+            JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+            JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+            WHERE op.status = "paid"
+            GROUP BY si.store_id, formatted_date
+
+            UNION ALL
+
+            -- 현금 결제 집계
+            SELECT 
+                si.store_id,
+                CASE WHEN ''', p_search_type, ''' = "year" THEN DATE_FORMAT(oc.pay_date, "%Y-%m") ELSE DATE(oc.pay_date) END AS formatted_date,
+                0 AS card_amount,
+                SUM(oc.amount) AS cash_amount,
+                SUM(p.delta) AS point_used,
+                SUM(ocp.price - pp.final_price) AS discount_amount
+            FROM offline_cash oc
+            JOIN Offline_Order oo ON oc.order_id = oo.order_id
+            JOIN Point p ON oo.point_id = p.point_id
+            JOIN Offline_Cart ocart ON oo.offline_cart_id = ocart.offline_cart_id
+            JOIN Offline_Cart_Product ocp ON ocart.offline_cart_id = ocp.offline_cart_id
+            JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+            JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+            WHERE oc.status = "COMPLETE"
+            GROUP BY si.store_id, formatted_date
+        ) c ON s.store_id = c.store_id
+        WHERE s.store_id = ', p_store_id, '
+        AND ', date_condition, '
+        GROUP BY s.name, c.formatted_date
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    -- EXPLAIN 실행
+    SET @explain_query = CONCAT('EXPLAIN ', @query);
+    PREPARE stmt FROM @explain_query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+CALL sp_store_sales_report_explain(
+    2,
+    'custom',
+    '2025-03-01',
+    '2025-03-15',
+    'all',
+    '순수_매출',
+    'desc'
+);
+
+
+CREATE TABLE Store_Sales_Summary (
+    summary_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'PK',
+    store_id BIGINT NOT NULL COMMENT '매장 ID',
+    report_date DATE NOT NULL COMMENT '통계 날짜 (일 단위)',
+    card_sales INT NOT NULL DEFAULT 0 COMMENT '카드 매출',
+    cash_sales INT NOT NULL DEFAULT 0 COMMENT '현금 매출',
+    total_sales INT NOT NULL DEFAULT 0 COMMENT '총 매출',
+    point_used INT NOT NULL DEFAULT 0 COMMENT '포인트 사용 금액',
+    discount_amount INT NOT NULL DEFAULT 0 COMMENT '할인 금액',
+    net_sales INT NOT NULL DEFAULT 0 COMMENT '순수 매출',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '데이터 생성일',
+    UNIQUE KEY uk_store_date (store_id, report_date)
+);
+
+-- 통계 데이터 자정마다 insert
+DELIMITER //
+
+CREATE EVENT IF NOT EXISTS daily_store_sales_summary
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_DATE + INTERVAL 2 DAY
+DO
+BEGIN
+    INSERT INTO Store_Sales_Summary
+        (store_id, report_date, card_sales, cash_sales, total_sales, point_used, discount_amount, net_sales)
+    SELECT
+        si.store_id,
+        CURDATE() AS report_date,
+        SUM(CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) AS card_sales,
+        SUM(CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END) AS cash_sales,
+        SUM(CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) + SUM(CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END) AS total_sales,
+        SUM(p.delta) AS point_used,
+        SUM(CASE WHEN ocp.price > pp.final_price THEN ocp.price - pp.final_price ELSE 0 END) AS discount_amount,
+        SUM(
+            (CASE WHEN op.status = 'paid' THEN op.amount ELSE 0 END) +
+            (CASE WHEN oc.status = 'COMPLETE' THEN oc.amount ELSE 0 END)
+        ) - SUM(p.delta) - SUM(CASE WHEN ocp.price > pp.final_price THEN ocp.price - pp.final_price ELSE 0 END) AS net_sales
+    FROM Offline_Cart_Product ocp
+    JOIN Store_Inventory si ON ocp.inventory_id = si.inventory_id
+    JOIN Product_Price pp ON ocp.inventory_id = si.inventory_id
+    LEFT JOIN Offline_Cart ocart ON ocp.offline_cart_id = ocart.offline_cart_id
+    LEFT JOIN Offline_Order oo ON ocart.offline_cart_id = oo.offline_cart_id
+    LEFT JOIN Point p ON oo.point_id = p.point_id
+    LEFT JOIN Offline_Payment op ON oo.order_id = op.order_id AND op.status = 'paid' AND DATE(op.paid_at) = CURDATE()
+    LEFT JOIN offline_cash oc ON oo.order_id = oc.order_id AND oc.status = 'COMPLETE' AND DATE(oc.pay_date) = CURDATE()
+    GROUP BY si.store_id;
+END //
+
+DELIMITER ;
+
+SHOW EVENTS;
+
+SELECT count(*) FROM Store_Sales_Summary;
+
+DROP PROCEDURE sp_get_sales_summary_range;
+
+DROP PROCEDURE sp_get_sales_summary_range;
+
+-- 검색 프로시저
+DELIMITER //
+
+CREATE PROCEDURE sp_get_sales_summary_range (
+    IN p_store_id INT,
+    IN p_period_type VARCHAR(10), -- 'day', 'month', 'custom'
+    IN p_start_date DATE,
+    IN p_end_date DATE, -- custom일 때 사용
+    IN p_sales_type VARCHAR(10), -- 'total', 'card', 'cash'
+    IN p_order_by VARCHAR(50),
+    IN p_order_dir VARCHAR(4)
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+
+    -- 날짜 필터 조건 설정
+    IF p_period_type = 'day' THEN
+        SET date_condition = CONCAT('report_date = ''', p_start_date, '''');
+    ELSEIF p_period_type = 'month' THEN
+        SET date_condition = CONCAT('DATE_FORMAT(report_date, "%Y-%m") = DATE_FORMAT(''', p_start_date, ''', "%Y-%m")');
+    ELSEIF p_period_type = 'custom' THEN
+        SET date_condition = CONCAT('report_date BETWEEN ''', p_start_date, ''' AND ''', p_end_date, '''');
+    END IF;
+
+    -- 동적 쿼리 생성
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장명, 
+            ss.report_date AS 결제일, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END), 0) AS 카드_매출, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END), 0) AS 현금_매출, 
+            FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END), 0) AS 총_매출, 
+            FORMAT(SUM(ss.point_used), 0) AS 포인트_사용_금액, 
+            FORMAT(SUM(ss.discount_amount), 0) AS 할인_금액, 
+            FORMAT(SUM(ss.net_sales), 0) AS 순수_매출 
+        FROM Store_Sales_Summary ss 
+        JOIN Stores s ON ss.store_id = s.store_id 
+        WHERE ss.store_id = ', p_store_id, ' AND ', date_condition, ' 
+        GROUP BY s.name, ss.report_date 
+        ORDER BY ', p_order_by, ' ', p_order_dir
+    );
+
+    -- 쿼리 실행
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+END //
+
+DELIMITER ;
+
+drop procedure sp_get_sales_summary_year;
+
+DELIMITER //
+
+CREATE PROCEDURE sp_get_sales_summary_year (
+    IN p_store_id INT,
+    IN p_start_date DATE,
+    IN p_sales_type VARCHAR(10), -- 'total', 'card', 'cash'
+    IN p_order_by VARCHAR(50),   -- NULL or alias명
+    IN p_order_dir VARCHAR(4)    -- 'asc', 'desc'
+)
+BEGIN
+    DECLARE date_condition VARCHAR(255);
+    DECLARE order_clause VARCHAR(255);
+
+    -- 1년치 필터 조건 설정
+    SET date_condition = CONCAT('YEAR(report_date) = YEAR(''', p_start_date, ''')');
+
+    -- order by CASE WHEN 매핑
+    IF p_order_by IS NULL OR p_order_by = '' THEN
+        SET order_clause = CONCAT('ORDER BY DATE_FORMAT(ss.report_date, "%Y-%m") ', p_order_dir);
+    ELSEIF p_order_by = '카드_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '현금_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '총_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END) ', p_order_dir);
+    ELSEIF p_order_by = '포인트_사용_금액' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.point_used) ', p_order_dir);
+    ELSEIF p_order_by = '할인_금액' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.discount_amount) ', p_order_dir);
+    ELSEIF p_order_by = '순수_매출' THEN
+        SET order_clause = CONCAT('ORDER BY SUM(ss.net_sales) ', p_order_dir);
+    ELSE
+        SET order_clause = CONCAT('ORDER BY DATE_FORMAT(ss.report_date, "%Y-%m") ', p_order_dir);
+    END IF;
+
+    -- 동적 쿼리 생성 (월별로 그룹핑)
+    SET @query = CONCAT(
+        'SELECT 
+            s.name AS 매장명,
+            DATE_FORMAT(ss.report_date, "%Y-%m") AS 결제월, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''card'') THEN ss.card_sales ELSE 0 END), 0) AS 카드_매출, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' IN (''total'', ''cash'') THEN ss.cash_sales ELSE 0 END), 0) AS 현금_매출, ',
+
+        'FORMAT(SUM(CASE WHEN ''', p_sales_type, ''' = ''total'' THEN ss.total_sales ELSE 0 END), 0) AS 총_매출, ',
+
+        'FORMAT(SUM(ss.point_used), 0) AS 포인트_사용_금액, ',
+
+        'FORMAT(SUM(ss.discount_amount), 0) AS 할인_금액, ',
+
+        'FORMAT(SUM(ss.net_sales), 0) AS 순수_매출 ',
+
+        'FROM Store_Sales_Summary ss ',
+        'JOIN Stores s ON ss.store_id = s.store_id ',
+        'WHERE ss.store_id = ', p_store_id, ' AND ', date_condition, ' ',
+        'GROUP BY s.name, DATE_FORMAT(ss.report_date, "%Y-%m") ',
+        order_clause
+    );
+
+    -- 쿼리 실행
+    PREPARE stmt FROM @query;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+END //
+
+DELIMITER ;
+
+
+
+
+-- 카드
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'card', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'card', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2024-01-01', 'card', '', 'desc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'card', 'report_date', 'desc');
+
+-- 현금
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'cash', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'cash', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2025-01-01', 'cash', '', 'desc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'cash', 'report_date', 'desc');
+
+-- 전체 매출
+-- 📅 하루 (day)
+CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'total', 'report_date', 'desc');
+
+-- 📅 한달 (month)
+CALL sp_get_sales_summary_range(3, 'month', '2025-03-01', NULL, 'total', 'report_date', 'desc');
+
+-- 📅 1년 (year)
+CALL sp_get_sales_summary_year(3, '2025-01-01', 'total', '', 'asc');
+
+-- 📅 커스텀 기간 (custom)
+CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'total', 'report_date', 'asc');
