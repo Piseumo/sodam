@@ -525,12 +525,25 @@ CREATE TABLE Employee_Store_Assignments (
     CONSTRAINT FK_ESA_Store FOREIGN KEY (store_id) REFERENCES Stores(store_id)
 );
 
-
--- Stores 테이블의 open_time, close_time을 TIME 형식으로 수정
+-- 2. 외래키 제약 조건 추가
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
 
--- 2. 외래키 제약 조건 추가
+alter table store_inventory
+	drop column location;
+
+ALTER TABLE Store_Inventory
+  ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
+
+ALTER TABLE Warehouse_Inventory
+  ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
+  
+ALTER TABLE Store_Inventory
+	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+    
+ALTER TABLE Warehouse_Inventory
+	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
   FOREIGN KEY (request_id) REFERENCES Warehouse_Orders_Requests(request_id);
