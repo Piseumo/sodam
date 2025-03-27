@@ -911,9 +911,6 @@ END //
 
 DELIMITER ;
 
-
-
-
 -- 카드
 -- 📅 하루 (day)
 CALL sp_get_sales_summary_range(3, 'day', '2025-03-20', NULL, 'card', 'report_date', 'desc');

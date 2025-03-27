@@ -503,6 +503,29 @@ CREATE TABLE Review (
     image VARCHAR(255) NULL COMMENT '첨부 사진'
 );
 
+CREATE TABLE Employee_Store_Assignments (
+    assignment_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '직원-매장 근무 배정 PK',
+    
+    employee_id BIGINT NOT NULL COMMENT '직원 ID',
+    store_id BIGINT NOT NULL COMMENT '매장 ID',
+
+    role ENUM('고객지원', '매장 직원', '매장 캐셔', '매장 재고 담당', '매장 관리자', '물류 직원', '물류 재고 담당', '물류 관리자', '배송 기사') NOT NULL COMMENT '배정 역할',
+
+    assigned_at DATE NOT NULL COMMENT '배정 시작일',
+    ended_at DATE NULL COMMENT '배정 종료일 (NULL이면 현재 근무 중)',
+
+    status ENUM('근무 중', '전출', '종료', '휴직', '파견') NOT NULL DEFAULT '근무 중' COMMENT '근무 상태',
+
+    notes VARCHAR(255) NULL COMMENT '기타 비고 또는 변경 사유',
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '등록 일시',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정 일시',
+
+    CONSTRAINT FK_ESA_Employee FOREIGN KEY (employee_id) REFERENCES Employees(employee_id),
+    CONSTRAINT FK_ESA_Store FOREIGN KEY (store_id) REFERENCES Stores(store_id)
+);
+
+
 -- Stores 테이블의 open_time, close_time을 TIME 형식으로 수정
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
