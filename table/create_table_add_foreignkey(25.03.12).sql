@@ -553,12 +553,10 @@ DROP COLUMN quantity; -- 0.078 sec
 ALTER TABLE Store_Order_Requests
 ADD COLUMN reason VARCHAR(255) NULL COMMENT '발주 사유'; -- 0.047 sec
 
-ALTER TABLE Store_Order_Requests
-ADD COLUMN warehouse_request_id BIGINT NULL COMMENT '연결된 물류센터 발주 요청 ID'; -- 0.047 sec
-
-ALTER TABLE Store_Order_Requests
-ADD CONSTRAINT FK_SOR_Warehouse_Request
-FOREIGN KEY (warehouse_request_id) REFERENCES Warehouse_Orders_Requests(request_id); -- 3.703 sec
+ALTER TABLE Warehouse_Orders_Requests
+ADD COLUMN store_request_id BIGINT NULL COMMENT '연결된 매장 발주 요청 ID',
+ADD CONSTRAINT FK_WOR_StoreRequest
+FOREIGN KEY (store_request_id) REFERENCES Store_Order_Requests(request_id);
 
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
