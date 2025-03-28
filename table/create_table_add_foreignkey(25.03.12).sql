@@ -543,6 +543,22 @@ ALTER TABLE Store_Inventory
     
 ALTER TABLE Warehouse_Inventory
 	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+    
+ALTER TABLE Employees
+  ADD COLUMN birth_date DATE NULL COMMENT '직원 생년월일'; -- 0.094 sec
+  
+  ALTER TABLE Store_Order_Requests
+DROP COLUMN quantity; -- 0.078 sec
+
+ALTER TABLE Store_Order_Requests
+ADD COLUMN reason VARCHAR(255) NULL COMMENT '발주 사유'; -- 0.047 sec
+
+ALTER TABLE Store_Order_Requests
+ADD COLUMN warehouse_request_id BIGINT NULL COMMENT '연결된 물류센터 발주 요청 ID'; -- 0.047 sec
+
+ALTER TABLE Store_Order_Requests
+ADD CONSTRAINT FK_SOR_Warehouse_Request
+FOREIGN KEY (warehouse_request_id) REFERENCES Warehouse_Orders_Requests(request_id); -- 3.703 sec
 
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
