@@ -529,8 +529,7 @@ CREATE TABLE Employee_Store_Assignments (
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
 
-alter table store_inventory
-	drop column location;
+ALTER EVENT daily_store_sales_summary DISABLE;
 
 ALTER TABLE Store_Inventory
   ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
@@ -543,7 +542,8 @@ ALTER TABLE Store_Inventory
     
 ALTER TABLE Warehouse_Inventory
 	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
-    
+
+show tables;
 ALTER TABLE Employees
   ADD COLUMN birth_date DATE NULL COMMENT '직원 생년월일'; -- 0.094 sec
   

@@ -3,72 +3,84 @@ from faker import Faker
 import random
 from datetime import datetime
 
-fake = Faker("ko_KR")  # ✅ 한글 로케일 적용
+fake = Faker("ko_KR")
 
-# ✅ MySQL 연결 설정
+# ✅ MySQL 연결
 conn = mysql.connector.connect(
-    host="112.222.157.156",      
-    port= 50006,
-    user="root",           
-    password="1234",  
+    host="112.222.157.156",
+    port=50006,
+    user="root",
+    password="1234",
     database="sodam"
 )
-
 cursor = conn.cursor()
 
-# ✅ (1) 기존 데이터 삭제 (TRUNCATE TABLE → AUTO_INCREMENT 초기화)
+# ✅ 기존 데이터 초기화
 cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 cursor.execute("TRUNCATE TABLE Warehouse_Inventory;")
 cursor.execute("TRUNCATE TABLE Store_Inventory;")
 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
-
 conn.commit()
+print("✅ 기존 재고 데이터 초기화 완료")
 
-print("기존 데이터 삭제 완료!")
+# ✅ ID 가져오기
+cursor.execute("SELECT store_id FROM Stores")
+store_ids = [row[0] for row in cursor.fetchall()]
 
-# ✅ 변수 설정
+cursor.execute("""
+    SELECT p.product_id, c.main 
+    FROM Product p 
+    JOIN Category c ON p.category_id = c.category_id
+""")
+product_infos = cursor.fetchall()
+
 warehouse_id = 1
-store_ids = [1, 2, 3, 4, 5]
-product_ids = list(range(1, 100001))  # ✅ 상품 ID: 1~1,000,000
+batch_size = 1000
+inserted_count = 0
 
-# ✅ Warehouse_Inventory 데이터 생성 및 삽입 (각 상품 1개씩, 총 100개)
-for product_id in product_ids:
-    quantity = random.randint(100, 5000)  # ✅ 창고 재고 수량
-    last_updated = fake.date_time_between(start_date="-1y", end_date="now")
+# ✅ batch 처리
+for i in range(0, len(product_infos), batch_size):
+    batch = product_infos[i:i+batch_size]
+    warehouse_rows = []
+    store_rows = []
 
-    sql = """
-    INSERT INTO Warehouse_Inventory (warehouse_id, product_id, quantity, last_updated)
-    VALUES (%s, %s, %s, %s);
-    """
-    values = (warehouse_id, product_id, quantity, last_updated)
+    for product_id, main in batch:
+        is_food = (main == '식료품')
 
-    cursor.execute(sql, values)
+        # ✅ 창고 데이터
+        quantity_wh = random.randint(100, 5000)
+        last_updated_wh = fake.date_time_between(start_date='-1y', end_date='now')
+        location_wh = fake.bothify(text='W-###-##')
+        expiration_wh = fake.date_time_between(start_date='-6M', end_date='+6M') if is_food else None
 
-conn.commit()
-print("Warehouse_Inventory 데이터 삽입 완료!")
+        warehouse_rows.append((warehouse_id, product_id, quantity_wh, last_updated_wh, location_wh, expiration_wh))
 
-# ✅ Store_Inventory 데이터 생성 및 삽입 (각 매장이 50~100개 상품을 가질 수도 있도록 수정)
-for store_id in store_ids:
-    
-    selected_products = product_ids  # ✅ 모든 매장이 100개 상품을 가짐
-    
-    for product_id in selected_products:
-        quantity = random.randint(100, 1000)  # ✅ 매장 재고 수량
-        last_updated = fake.date_time_between(start_date="-1y", end_date="now")
+        # ✅ 매장들에 대한 재고 데이터
+        for store_id in store_ids:
+            quantity_st = random.randint(100, 1000)
+            last_updated_st = fake.date_time_between(start_date='-1y', end_date='now')
+            location_st = fake.bothify(text='S-###-##')
+            expiration_st = fake.date_time_between(start_date='-3M', end_date='+3M') if is_food else None
 
-        sql = """
-        INSERT INTO Store_Inventory (store_id, product_id, quantity, last_updated)
-        VALUES (%s, %s, %s, %s);
-        """
-        values = (store_id, product_id, quantity, last_updated)
+            store_rows.append((store_id, product_id, quantity_st, last_updated_st, location_st, expiration_st))
 
-        cursor.execute(sql, values)
+    # ✅ INSERT 실행
+    cursor.executemany("""
+        INSERT INTO Warehouse_Inventory 
+        (warehouse_id, product_id, quantity, last_updated, location, expiration_date)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, warehouse_rows)
 
-conn.commit()
-print("Store_Inventory 데이터 삽입 완료!")
+    cursor.executemany("""
+        INSERT INTO Store_Inventory 
+        (store_id, product_id, quantity, last_updated, location, expiration_date)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, store_rows)
 
-# ✅ 커서 및 연결 종료
+    conn.commit()
+    inserted_count += len(batch)
+    print(f"✅ {inserted_count}개 상품 처리 완료")
+
 cursor.close()
 conn.close()
-
-print("상품별 창고 및 매장 재고 데이터가 성공적으로 삽입되었습니다! 🚀")
+print("🎉 모든 재고 더미 데이터 삽입 완료!")

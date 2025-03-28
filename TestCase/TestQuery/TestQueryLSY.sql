@@ -550,8 +550,6 @@ LEFT JOIN (
     GROUP BY `매장 ID`
 ) ca ON s.store_id = ca.`매장 ID`;
 
-drop procedure sp_store_sales_report;
-
 -- 매출 보고서 프로시저 적용 INDEX
 CREATE INDEX idx_payment_paid_at ON Offline_Payment(paid_at, status);
 
@@ -781,8 +779,6 @@ END //
 
 DELIMITER ;
 
-SHOW EVENTS;
-
 SELECT count(*) FROM Store_Sales_Summary;
 
 DROP PROCEDURE sp_get_sales_summary_range;
@@ -949,3 +945,13 @@ CALL sp_get_sales_summary_year(3, '2025-01-01', 'total', '', 'asc');
 
 -- 📅 커스텀 기간 (custom)
 CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'total', 'report_date', 'asc');
+
+ALTER EVENT daily_store_sales_summary DISABLE;
+ALTER EVENT daily_store_sales_summary ENABLE;
+
+show triggers;
+DROP TRIGGER IF EXISTS trg_offline_payment_status_update;
+DROP TRIGGER IF EXISTS trg_warehouse_order_status_update;
+DROP TRIGGER IF EXISTS trg_store_order_status_update;
+DROP TRIGGER IF EXISTS trg_order_cancel_sync;
+
