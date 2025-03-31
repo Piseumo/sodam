@@ -437,6 +437,7 @@ CREATE TABLE Employees (
     store_id BIGINT NULL COMMENT '매장 직원',
     warehouse_id BIGINT NULL COMMENT '물류센터 직원',
     role ENUM('고객지원', '매장 직원', '매장 캐셔', '매장 재고 담당', '매장 관리자', '물류 직원', '물류 재고 담당', '물류 관리자', '배송 기사'),
+	department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀') NOT NULL COMMENT '소속 부서',
     hire_date DATE NOT NULL COMMENT '고용 날짜',
     salary DECIMAL(10, 2) NOT NULL COMMENT '급여',
     location_type ENUM('매장', '물류센터') NOT NULL COMMENT '근무 장소',
@@ -490,8 +491,6 @@ CREATE TABLE Warehouse_Orders_Requests (
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '요청 수정 날짜'
 );
 
-
-
 CREATE TABLE Review (
     review_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     customer_id BIGINT NOT NULL COMMENT '리뷰 작성자',
@@ -509,7 +508,7 @@ CREATE TABLE Employee_Store_Assignments (
     employee_id BIGINT NOT NULL COMMENT '직원 ID',
     store_id BIGINT NOT NULL COMMENT '매장 ID',
 
-    role ENUM('고객지원', '매장 직원', '매장 캐셔', '매장 재고 담당', '매장 관리자', '물류 직원', '물류 재고 담당', '물류 관리자', '배송 기사') NOT NULL COMMENT '배정 역할',
+    department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀') NOT NULL COMMENT '소속 부서',
 
     assigned_at DATE NOT NULL COMMENT '배정 시작일',
     ended_at DATE NULL COMMENT '배정 종료일 (NULL이면 현재 근무 중)',
@@ -529,7 +528,36 @@ CREATE TABLE Employee_Store_Assignments (
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
 
-ALTER EVENT daily_store_sales_summary DISABLE;
+ALTER TABLE Employees
+ADD COLUMN department ENUM(
+    '매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀'
+) NULL COMMENT '소속 부서';
+
+ALTER TABLE Employee_Store_Assignments
+ADD COLUMN department ENUM(
+    '매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀'
+) NULL COMMENT '배정 부서';
+
+ALTER TABLE Employee_Store_Assignments
+DROP COLUMN role;
+
+-- 1. 매장 발주 요청 테이블
+ALTER TABLE Store_Order_Requests
+ADD COLUMN requested_by BIGINT NULL COMMENT '발주 요청자 ID',
+ADD COLUMN approved_by BIGINT NULL COMMENT '발주 승인자 ID',
+ADD CONSTRAINT FK_SOR_RequestedBy FOREIGN KEY (requested_by) REFERENCES Employees(employee_id),
+ADD CONSTRAINT FK_SOR_ApprovedBy FOREIGN KEY (approved_by) REFERENCES Employees(employee_id);
+
+-- 2. 물류센터 발주 요청 테이블
+ALTER TABLE Warehouse_Orders_Requests
+ADD COLUMN requested_by BIGINT NULL COMMENT '물류센터 발주 요청자 ID',
+ADD COLUMN approved_by BIGINT NULL COMMENT '물류센터 발주 승인자 ID',
+ADD CONSTRAINT FK_WOR_RequestedBy FOREIGN KEY (requested_by) REFERENCES Employees(employee_id),
+ADD CONSTRAINT FK_WOR_ApprovedBy FOREIGN KEY (approved_by) REFERENCES Employees(employee_id);
+
+ALTER TABLE Warehouse_Orders_Requests
+MODIFY COLUMN requested_by BIGINT NULL COMMENT '물류센터 입출고 요청자 ID',
+MODIFY COLUMN approved_by  BIGINT NULL COMMENT '물류센터 입출고 승인자 ID';
 
 ALTER TABLE Store_Inventory
   ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
@@ -538,25 +566,25 @@ ALTER TABLE Warehouse_Inventory
   ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
   
 ALTER TABLE Store_Inventory
-	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+  ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
     
 ALTER TABLE Warehouse_Inventory
-	ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+  ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
 
 show tables;
 ALTER TABLE Employees
   ADD COLUMN birth_date DATE NULL COMMENT '직원 생년월일'; -- 0.094 sec
   
-  ALTER TABLE Store_Order_Requests
-DROP COLUMN quantity; -- 0.078 sec
+ALTER TABLE Store_Order_Requests
+  DROP COLUMN quantity; -- 0.078 sec
 
 ALTER TABLE Store_Order_Requests
-ADD COLUMN reason VARCHAR(255) NULL COMMENT '발주 사유'; -- 0.047 sec
+  ADD COLUMN reason VARCHAR(255) NULL COMMENT '발주 사유'; -- 0.047 sec
 
 ALTER TABLE Warehouse_Orders_Requests
-ADD COLUMN store_request_id BIGINT NULL COMMENT '연결된 매장 발주 요청 ID',
-ADD CONSTRAINT FK_WOR_StoreRequest
-FOREIGN KEY (store_request_id) REFERENCES Store_Order_Requests(request_id);
+  ADD COLUMN store_request_id BIGINT NULL COMMENT '연결된 매장 발주 요청 ID',
+  ADD CONSTRAINT FK_WOR_StoreRequest
+  FOREIGN KEY (store_request_id) REFERENCES Store_Order_Requests(request_id);
 
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
@@ -790,6 +818,3 @@ ALTER TABLE Warehouse_Orders_Requests
 ALTER TABLE `online_card`
 MODIFY COLUMN `issuer_code` VARCHAR(2) NOT NULL COMMENT '카드 발급사 코드',
 MODIFY COLUMN `acquirer_code` VARCHAR(2) NOT NULL COMMENT '카드 매입사 코드';
-
-
-  

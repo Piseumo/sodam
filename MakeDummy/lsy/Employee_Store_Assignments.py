@@ -6,49 +6,56 @@ from datetime import timedelta
 # Faker 초기화
 fake = Faker('ko_KR')
 
-# ✅ MySQL 연결 (지정한 host, port, user, pw 사용)
+# ✅ MySQL 연결
 conn = mysql.connector.connect(
-    host="112.222.157.156",      
+    host="112.222.157.156",
     port=50006,
-    user="root",           
-    password="1234",  
+    user="root",
+    password="1234",
     database="sodam"
 )
 cursor = conn.cursor()
 
-# ✅ 실제 존재하는 employee_id 조회
-cursor.execute("SELECT employee_id FROM Employees")
-employee_ids = [row[0] for row in cursor.fetchall()]
+# ✅ (1) 기존 데이터 삭제 (TRUNCATE TABLE → AUTO_INCREMENT 초기화)
+cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+cursor.execute("TRUNCATE TABLE Employee_Store_Assignments;")
+cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+conn.commit()
 
-# ✅ 실제 존재하는 store_id 조회
-cursor.execute("SELECT store_id FROM Stores")
-store_ids = [row[0] for row in cursor.fetchall()]
+print("기존 데이터 삭제 완료!")
 
-# 설정값
-roles = ['매장 관리자', '매장 직원', '매장 재고 담당', '매장 캐셔', '고객지원']
-statuses = ['근무 중', '이동', '퇴사', '휴직']
-num_rows = 30  # 생성할 더미 데이터 수
+# ✅ Employees 테이블에서 실제 employee_id, store_id, role 조회 (매장 직원만)
+cursor.execute("""
+    SELECT employee_id, store_id, role 
+    FROM Employees 
+    WHERE role IN ('고객지원', '매장 직원', '매장 캐셔', '매장 재고 담당', '매장 관리자')
+""")
+employee_data = cursor.fetchall()
+
+# ✅ 상태값 리스트
+statuses = ['근무 중', '전출', '종료', '휴직', '파견']
 
 # ✅ 더미 데이터 삽입
-for _ in range(num_rows):
-    employee_id = random.choice(employee_ids)
-    store_id = random.choice(store_ids)
-    role = random.choice(roles)
+for row in employee_data:
+    employee_id, store_id, role = row
+    if not store_id:  # 매장에 배정된 직원만 처리
+        continue
+
     status = random.choice(statuses)
-    start_date = fake.date_between(start_date='-2y', end_date='-30d')
-    end_date = None if status == '근무 중' else start_date + timedelta(days=random.randint(30, 300))
-    note = fake.sentence(nb_words=5)
+    assigned_at = fake.date_between(start_date='-2y', end_date='-30d')
+    ended_at = None if status == '근무 중' else assigned_at + timedelta(days=random.randint(30, 300))
+    notes = fake.sentence(nb_words=5)
 
     query = """
         INSERT INTO Employee_Store_Assignments 
-            (employee_id, store_id, role, start_date, end_date, status, note)
+            (employee_id, store_id, role, assigned_at, ended_at, status, notes)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
-    cursor.execute(query, (employee_id, store_id, role, start_date, end_date, status, note))
+    cursor.execute(query, (employee_id, store_id, role, assigned_at, ended_at, status, notes))
 
 # 저장 및 종료
 conn.commit()
 cursor.close()
 conn.close()
 
-print(f"{num_rows}건의 직원-매장 배치 이력이 성공적으로 추가되었습니다.")
+print(f"{len(employee_data)}명의 실제 매장 직원을 기반으로 배정 기록이 추가되었습니다.")

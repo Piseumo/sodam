@@ -955,3 +955,29 @@ DROP TRIGGER IF EXISTS trg_warehouse_order_status_update;
 DROP TRIGGER IF EXISTS trg_store_order_status_update;
 DROP TRIGGER IF EXISTS trg_order_cancel_sync;
 
+ALTER TABLE Employees
+MODIFY COLUMN department ENUM(
+  '매장팀', '물류팀', '배송팀', '고객지원팀'
+) NULL COMMENT '소속 부서';
+
+ALTER TABLE Employee_Store_Assignments
+MODIFY COLUMN department ENUM(
+  '매장팀', '물류팀', '배송팀', '고객지원팀'
+) NULL COMMENT '배정 부서';
+
+ALTER TABLE Employees
+MODIFY COLUMN role ENUM(
+  -- 매장팀
+  '매장 총괄 관리자', '매장 운영 관리자', '매장 재고 관리자', 
+  '매장 주문 담당자', '매장 캐셔', '매장 CS 담당자',
+
+  -- 물류팀
+  '물류센터장', '물류 입고 담당자', '물류 출고 담당자',
+  '물류 재고 관리자', '온라인 주문 출고자', '검수 담당자',
+
+  -- 배송팀
+  '배송 기사',
+
+  -- 고객지원팀
+  '고객 문의 담당자', '반품 처리 담당자'
+) NULL COMMENT '직원 역할';
