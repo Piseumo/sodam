@@ -981,3 +981,9 @@ MODIFY COLUMN role ENUM(
   -- 고객지원팀
   '고객 문의 담당자', '반품 처리 담당자'
 ) NULL COMMENT '직원 역할';
+
+ALTER TABLE Employees
+ADD COLUMN position ENUM('점장', '운영 관리자', '파트장', '팀장', '일반 직원') NULL COMMENT '직급';
+
+ALTER TABLE Employees
+ADD COLUMN is_supervisor BOOLEAN NOT NULL DEFAULT FALSE COMMENT '관리자 여부';
