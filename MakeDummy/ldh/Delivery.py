@@ -1,115 +1,58 @@
 import mysql.connector
 import random
-import datetime
+from datetime import datetime, timedelta
 
-# MySQL 연결 설정
+# 데이터베이스 연결
 db = mysql.connector.connect(
-    host="112.222.157.156",      
-    port= 50006,
-    user="root",           
-    password="1234",  
+    host="112.222.157.156",
+    port=50006,
+    user="root",
+    password="1234",
     database="sodam"
 )
 
 # 커서 생성
 cursor = db.cursor()
 
-def insert_delivery():
-    # 상태 설정: 배송완료 99%, 배송중사고 1%
-    statuses = ['배송완료', '배송중사고']
-    status_weights = [0.99, 0.01]  # 배송완료 99%, 배송중사고 1%
+# delivery_assignment 테이블에서 assignment_id 가져오기
+query = "SELECT assignment_id FROM delivery_assignment LIMIT 10;"  # 10개의 데이터를 예시로 가져옴
+cursor.execute(query)
 
-    # 요청 유형을 고객 100%로 설정
-    request_types = ['고객']
-    request_weights = [1.0]  # 100% 고객
+# 쿼리 결과 가져오기
+assignment_ids = cursor.fetchall()
 
-    # 온라인 결제 상태가 'COMPLETED'인 online_payment_id 가져오기
-    cursor.execute("SELECT online_payment_id FROM online_payment WHERE status = 'COMPLETED'")
-    online_payment_ids = [row[0] for row in cursor.fetchall()]
-    print(f"Found {len(online_payment_ids)} online_payment_ids")  # 디버깅
+# 더미 데이터 삽입
+for assignment_id_tuple in assignment_ids:
+    assignment_id = assignment_id_tuple[0]
 
-    # Delivery_Driver 테이블에서 근무가능, training_check 1, insurance 1인 driver_id 가져오기
-    cursor.execute("SELECT driver_id FROM Delivery_Driver WHERE status = '근무가능' AND training_check = 1 AND insurance = 1")
-    driver_ids = [row[0] for row in cursor.fetchall()]
-    print(f"Found {len(driver_ids)} driver_ids")  # 디버깅
+    # 상태와 요청 유형 설정
+    status_options = ['배송완료', '배송중사고']
+    status = random.choice(status_options)  # 배송완료 또는 배송중사고 랜덤 선택
+    request_type = '일반배송'  # 모든 값은 '일반배송'으로 고정
+    
+    # start_date는 오늘로부터 3일 전
+    start_date = datetime.now() - timedelta(days=3)
+    
+    # end_date는 start_date에서 랜덤 시간으로 설정 (시간 단위로 랜덤)
+    random_hour = random.randint(0, 23)
+    random_minute = random.randint(0, 59)
+    random_second = random.randint(0, 59)
+    end_date = start_date.replace(hour=random_hour, minute=random_minute, second=random_second)
+    
+    # delivery 테이블에 데이터 삽입
+    insert_query = """
+        INSERT INTO delivery (status, start_date, end_date, request_type, assignment_id)
+        VALUES (%s, %s, %s, %s, %s);
+    """
+    cursor.execute(insert_query, (status, start_date, end_date, request_type, assignment_id))
+    
+    # 삽입된 ID 확인
+    delivery_id = cursor.lastrowid
+    print(f"Inserted: delivery_id={delivery_id}, assignment_id={assignment_id}, status={status}, request_type={request_type}, start_date={start_date}, end_date={end_date}")
 
-    # Delivery_Car 테이블에서 배송가능, insurance 1인 car_id 가져오기
-    cursor.execute("SELECT car_id FROM Delivery_Car WHERE status = '배송가능' AND insurance = 1")
-    car_ids = [row[0] for row in cursor.fetchall()]
-    print(f"Found {len(car_ids)} car_ids")  # 디버깅
+# 커밋하여 데이터 반영
+db.commit()
 
-    if not driver_ids or not car_ids or not online_payment_ids:
-        print("필요한 데이터가 부족합니다. 데이터를 확인해주세요.")
-        return
-
-    # 중복된 online_payment_id를 추적하기 위한 집합
-    used_online_payment_ids = set()
-
-    # 여러 데이터 삽입할 리스트
-    data_to_insert = []
-
-    # 배치 크기 설정 (예: 한 번에 1000개씩 삽입)
-    BATCH_SIZE = 1000
-
-    # driver_id, car_id, online_payment_id의 가능한 모든 조합 반복
-    for online_payment_id in online_payment_ids:
-        # 랜덤하게 driver_id와 car_id 선택
-        driver_id = random.choice(driver_ids)
-        car_id = random.choice(car_ids)
-
-        # 이미 사용된 online_payment_id는 건너뛰기
-        if online_payment_id in used_online_payment_ids:
-            continue
-
-        # status는 배송완료 99%, 배송중사고 1% 확률로 설정
-        status = random.choices(statuses, weights=status_weights, k=1)[0]
-
-        # start_date는 오늘로부터 7일 전에서 4일 전까지 랜덤값 생성
-        start_date = datetime.datetime.today() - datetime.timedelta(days=random.randint(4, 7))
-
-        # end_date는 start_date로부터 2일 이후
-        end_date = start_date + datetime.timedelta(days=2)
-
-        # request_type은 100% 고객으로 설정
-        request_type = random.choices(request_types, weights=request_weights, k=1)[0]
-
-        # 삽입할 데이터를 리스트에 저장
-        data_to_insert.append((driver_id, car_id, online_payment_id, status, start_date, end_date, request_type))
-
-        # 사용된 online_payment_id를 집합에 추가
-        used_online_payment_ids.add(online_payment_id)
-
-        # 배치 크기 만큼 데이터가 모이면 실행
-        if len(data_to_insert) >= BATCH_SIZE:
-            query = """
-            INSERT INTO Delivery (driver_id, car_id, online_payment_id, status, start_date, end_date, request_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-            try:
-                cursor.executemany(query, data_to_insert)  # 여러 데이터 삽입
-                db.commit()  # 커밋
-                print(f"Inserted {len(data_to_insert)} records.")  # 삽입된 데이터 수 확인
-            except mysql.connector.Error as err:
-                db.rollback()  # 오류 발생 시 롤백
-                print(f"Error: {err}")
-            data_to_insert = []  # 데이터 리스트 초기화
-
-    # 나머지 데이터 삽입
-    if data_to_insert:
-        query = """
-        INSERT INTO Delivery (driver_id, car_id, online_payment_id, status, start_date, end_date, request_type)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        try:
-            cursor.executemany(query, data_to_insert)  # 나머지 데이터 삽입
-            db.commit()  # 커밋
-            print(f"Inserted {len(data_to_insert)} records.")  # 삽입된 데이터 수 확인
-        except mysql.connector.Error as err:
-            db.rollback()  # 오류 발생 시 롤백
-            print(f"Error: {err}")
-
-    # 최종 완료 메시지
-    print("✅ 배송테이블 데이터 전부 삽입 완료!")
-
-# 함수 호출
-insert_delivery()
+# 연결 종료
+cursor.close()
+db.close()

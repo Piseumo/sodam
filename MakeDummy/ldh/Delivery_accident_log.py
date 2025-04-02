@@ -58,11 +58,11 @@ def generate_accident_log(delivery_id):
     delivery_id = result[0]
     start_date = result[1]
 
-    # 직원 정보 가져오기 (role이 '고객지원'인 직원)
+    # 직원 정보 가져오기 (role이 '물류 출고 담당자'인 직원)
     cursor.execute("""
         SELECT employee_id 
         FROM Employees 
-        WHERE role = '고객지원'
+        WHERE role = '물류 출고 담당자'
     """)
     employees = cursor.fetchall()
     
