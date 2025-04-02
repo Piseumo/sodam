@@ -14,16 +14,32 @@ db = mysql.connector.connect(
 # 커서 생성
 cursor = db.cursor()
 
-# delivery_assignment 테이블에서 assignment_id 가져오기
-query = "SELECT assignment_id FROM delivery_assignment LIMIT 10;"  # 10개의 데이터를 예시로 가져옴
+# delivery_assignment 테이블에서 assignment_id 가져오기 (최대 20개)
+query = "SELECT assignment_id FROM delivery_assignment LIMIT 20;"
 cursor.execute(query)
 
 # 쿼리 결과 가져오기
 assignment_ids = cursor.fetchall()
 
+# 만약 가져온 assignment_id가 없다면 종료
+if not assignment_ids:
+    print("No data available for assignment_id.")
+    db.close()
+    exit()
+
 # 더미 데이터 삽입
 for assignment_id_tuple in assignment_ids:
     assignment_id = assignment_id_tuple[0]
+
+    # 이미 delivery 테이블에 해당 assignment_id가 존재하는지 확인
+    check_query = "SELECT COUNT(*) FROM delivery WHERE assignment_id = %s"
+    cursor.execute(check_query, (assignment_id,))
+    result = cursor.fetchone()
+
+    # 이미 존재하는 assignment_id라면 스킵
+    if result[0] > 0:
+        print(f"Skipping assignment_id={assignment_id} as it already exists in delivery table.")
+        continue
 
     # 상태와 요청 유형 설정
     status_options = ['배송완료', '배송중사고']
