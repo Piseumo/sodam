@@ -833,3 +833,56 @@ ALTER TABLE Warehouse_Orders_Requests
 ALTER TABLE `online_card`
 MODIFY COLUMN `issuer_code` VARCHAR(2) NOT NULL COMMENT '카드 발급사 코드',
 MODIFY COLUMN `acquirer_code` VARCHAR(2) NOT NULL COMMENT '카드 매입사 코드';
+
+-- 리뷰 테이블에서 장바구니 FK 끊기
+ALTER TABLE Review
+DROP FOREIGN KEY FK_Review_Product;
+
+-- 새로운 FK 추가
+ALTER TABLE Review
+ADD CONSTRAINT FK_Review_Product
+FOREIGN KEY (product_id)
+REFERENCES Product(product_id);
+
+
+-- QnA 테이블에 type 컬럼 추가
+ALTER TABLE QnA
+ADD COLUMN type ENUM('회원', '주문/결제/배송', '취소/교환/반품', '상품', '포인트/할인', '기타') 
+NULL DEFAULT '기타' COMMENT '문의 유형';
+
+
+-- 배송지 테이블 타입 컬럼 추가
+ALTER TABLE delivery_address
+ADD COLUMN type ENUM('기본', '추가')
+NULL DEFAULT '기본' COMMENT '배송지 유형';
+
+
+-- 기본정보 테이블 고객 등급 컬럼 추가
+ALTER TABLE Customer
+ADD COLUMN type ENUM('Normal', 'VIP', 'VVIP', 'SVIP')
+NULL DEFAULT 'Normal' COMMENT '현재 고객 등급';
+
+
+CREATE TABLE accumulated_amount_history (
+    history_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT NOT NULL,
+    recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '기록 시점',
+    accumulated_amount BIGINT NOT NULL COMMENT '해당 시점의 누적 결제 금액',
+    note VARCHAR(255) NULL COMMENT '비고 또는 변경 사유 (예: 월말 등급 산정)',
+
+    CONSTRAINT fk_accumulated_amount_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES Customer(customer_id)
+);
+
+CREATE TABLE Product_Cost (
+    cost_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    base_cost INT NOT NULL COMMENT '기본 원가',
+    type ENUM('Increase', 'Decrease') NULL COMMENT '증감 타입',
+    delta INT NULL COMMENT '증감 가격',
+    reason VARCHAR(255) NULL COMMENT '가격 변동 사유',
+    final_cost INT NOT NULL COMMENT '최종 원가',
+    date_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT FK_PC_Product FOREIGN KEY (product_id) REFERENCES Product(product_id)
+);
