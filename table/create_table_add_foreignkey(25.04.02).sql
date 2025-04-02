@@ -252,12 +252,14 @@ CREATE TABLE Store_Order_Requests (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '요청 일자',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정 일자'
 );
+
 CREATE TABLE Online_Easy_Pay (
     easy_pay_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     provider VARCHAR(255) NOT NULL COMMENT '선택한 간편결제사 코드',
     amount INT NOT NULL COMMENT '간편결제로 결제한 금액',
     discount_amount INT NULL COMMENT '간편결제 서비스의 포인트로 할인된 금액'
 );
+
 CREATE TABLE `online_cancels` (
     `cancels_id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '결제 취소 ID',
     `transaction_key` VARCHAR(64) NOT NULL COMMENT '취소건의 키값',
@@ -272,7 +274,6 @@ CREATE TABLE `online_cancels` (
     `cancel_status` VARCHAR(20) NOT NULL COMMENT '결제 취소 진행 상태(DONE, IN_PROGRESS, ABORTED-취소 실패)',
     `cancel_request_id` VARCHAR(255) NULL
 );
-
 
 CREATE TABLE `online_payment` (
     `online_payment_id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -314,6 +315,7 @@ CREATE TABLE `online_payment` (
     CONSTRAINT fk_easy_pay_id FOREIGN KEY (`easy_pay_id`) REFERENCES `Online_Easy_Pay` (`easy_pay_id`),
     CONSTRAINT fk_cancels_id FOREIGN KEY (`cancels_id`) REFERENCES `online_cancels` (`cancels_id`)
 );
+
 CREATE TABLE offline_cash (
     offline_cash_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     order_id BIGINT NOT NULL,
@@ -327,15 +329,12 @@ CREATE TABLE offline_cash (
     cash_receipt_approval_num VARCHAR(50) NULL COMMENT '현금 영수증 승인 번호'
 );
 
-
 CREATE TABLE Delivery_Alarm (
     alarm_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     delivery_id BIGINT NOT NULL,
     text TEXT NULL COMMENT '알람 내용',
     send_date DATE NOT NULL COMMENT '알람 송신 날짜'
 );
-
-
 
 CREATE TABLE Delivery_Accident_Log (
     accident_log_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -524,6 +523,17 @@ CREATE TABLE Employee_Store_Assignments (
     CONSTRAINT FK_ESA_Store FOREIGN KEY (store_id) REFERENCES Stores(store_id)
 );
 
+CREATE TABLE return_inspection (
+    inspection_id     BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '검수 고유 ID',
+    return_id         BIGINT NOT NULL COMMENT '환불/교환 요청 ID',
+    inspector         VARCHAR(100) NOT NULL COMMENT '검수 담당자',
+    inspection_result ENUM('PASS', 'FAIL') NOT NULL COMMENT '검수 결과: PASS = 재입고, FAIL = 폐기',
+    inspected_date    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '검수 일시',
+    inspection_comment VARCHAR(255) NULL COMMENT '메모 (오염, 파손 등)',
+    
+    CONSTRAINT fk_inspection_return FOREIGN KEY (return_id) REFERENCES order_return(return_id)
+);
+
 -- 2. 외래키 제약 조건 추가
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
@@ -540,6 +550,12 @@ ADD COLUMN department ENUM(
 
 ALTER TABLE Employee_Store_Assignments
 DROP COLUMN role;
+
+ALTER TABLE Employee_Store_Assignments
+MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '배정 부서';
+
+ALTER TABLE Employees
+MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '부서';
 
 -- 1. 매장 발주 요청 테이블
 ALTER TABLE Store_Order_Requests
@@ -567,7 +583,7 @@ ALTER TABLE Warehouse_Inventory
   
 ALTER TABLE Store_Inventory
   ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
-    
+
 ALTER TABLE Warehouse_Inventory
   ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
 
@@ -814,7 +830,59 @@ ALTER TABLE Warehouse_Orders_Requests
   ADD CONSTRAINT FK_WOR_Warehouses
   FOREIGN KEY (warehouse_id) REFERENCES Warehouses(warehouse_id);
 
-
 ALTER TABLE `online_card`
 MODIFY COLUMN `issuer_code` VARCHAR(2) NOT NULL COMMENT '카드 발급사 코드',
 MODIFY COLUMN `acquirer_code` VARCHAR(2) NOT NULL COMMENT '카드 매입사 코드';
+
+-- 리뷰 테이블에서 장바구니 FK 끊기
+ALTER TABLE Review
+DROP FOREIGN KEY FK_Review_Product;
+
+-- 새로운 FK 추가
+ALTER TABLE Review
+ADD CONSTRAINT FK_Review_Product
+FOREIGN KEY (product_id)
+REFERENCES Product(product_id);
+
+
+-- QnA 테이블에 type 컬럼 추가
+ALTER TABLE QnA
+ADD COLUMN type ENUM('회원', '주문/결제/배송', '취소/교환/반품', '상품', '포인트/할인', '기타') 
+NULL DEFAULT '기타' COMMENT '문의 유형';
+
+
+-- 배송지 테이블 타입 컬럼 추가
+ALTER TABLE delivery_address
+ADD COLUMN type ENUM('기본', '추가')
+NULL DEFAULT '기본' COMMENT '배송지 유형';
+
+
+-- 기본정보 테이블 고객 등급 컬럼 추가
+ALTER TABLE Customer
+ADD COLUMN type ENUM('Normal', 'VIP', 'VVIP', 'SVIP')
+NULL DEFAULT 'Normal' COMMENT '현재 고객 등급';
+
+
+CREATE TABLE accumulated_amount_history (
+    history_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT NOT NULL,
+    recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '기록 시점',
+    accumulated_amount BIGINT NOT NULL COMMENT '해당 시점의 누적 결제 금액',
+    note VARCHAR(255) NULL COMMENT '비고 또는 변경 사유 (예: 월말 등급 산정)',
+
+    CONSTRAINT fk_accumulated_amount_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES Customer(customer_id)
+);
+
+CREATE TABLE Product_Cost (
+    cost_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    base_cost INT NOT NULL COMMENT '기본 원가',
+    type ENUM('Increase', 'Decrease') NULL COMMENT '증감 타입',
+    delta INT NULL COMMENT '증감 가격',
+    reason VARCHAR(255) NULL COMMENT '가격 변동 사유',
+    final_cost INT NOT NULL COMMENT '최종 원가',
+    date_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT FK_PC_Product FOREIGN KEY (product_id) REFERENCES Product(product_id)
+);
