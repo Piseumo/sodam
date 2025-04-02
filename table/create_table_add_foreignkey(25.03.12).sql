@@ -252,12 +252,14 @@ CREATE TABLE Store_Order_Requests (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '요청 일자',
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정 일자'
 );
+
 CREATE TABLE Online_Easy_Pay (
     easy_pay_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     provider VARCHAR(255) NOT NULL COMMENT '선택한 간편결제사 코드',
     amount INT NOT NULL COMMENT '간편결제로 결제한 금액',
     discount_amount INT NULL COMMENT '간편결제 서비스의 포인트로 할인된 금액'
 );
+
 CREATE TABLE `online_cancels` (
     `cancels_id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '결제 취소 ID',
     `transaction_key` VARCHAR(64) NOT NULL COMMENT '취소건의 키값',
@@ -272,7 +274,6 @@ CREATE TABLE `online_cancels` (
     `cancel_status` VARCHAR(20) NOT NULL COMMENT '결제 취소 진행 상태(DONE, IN_PROGRESS, ABORTED-취소 실패)',
     `cancel_request_id` VARCHAR(255) NULL
 );
-
 
 CREATE TABLE `online_payment` (
     `online_payment_id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -314,6 +315,7 @@ CREATE TABLE `online_payment` (
     CONSTRAINT fk_easy_pay_id FOREIGN KEY (`easy_pay_id`) REFERENCES `Online_Easy_Pay` (`easy_pay_id`),
     CONSTRAINT fk_cancels_id FOREIGN KEY (`cancels_id`) REFERENCES `online_cancels` (`cancels_id`)
 );
+
 CREATE TABLE offline_cash (
     offline_cash_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     order_id BIGINT NOT NULL,
@@ -327,15 +329,12 @@ CREATE TABLE offline_cash (
     cash_receipt_approval_num VARCHAR(50) NULL COMMENT '현금 영수증 승인 번호'
 );
 
-
 CREATE TABLE Delivery_Alarm (
     alarm_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     delivery_id BIGINT NOT NULL,
     text TEXT NULL COMMENT '알람 내용',
     send_date DATE NOT NULL COMMENT '알람 송신 날짜'
 );
-
-
 
 CREATE TABLE Delivery_Accident_Log (
     accident_log_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -437,6 +436,7 @@ CREATE TABLE Employees (
     store_id BIGINT NULL COMMENT '매장 직원',
     warehouse_id BIGINT NULL COMMENT '물류센터 직원',
     role ENUM('고객지원', '매장 직원', '매장 캐셔', '매장 재고 담당', '매장 관리자', '물류 직원', '물류 재고 담당', '물류 관리자', '배송 기사'),
+	department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀') NOT NULL COMMENT '소속 부서',
     hire_date DATE NOT NULL COMMENT '고용 날짜',
     salary DECIMAL(10, 2) NOT NULL COMMENT '급여',
     location_type ENUM('매장', '물류센터') NOT NULL COMMENT '근무 장소',
@@ -490,8 +490,6 @@ CREATE TABLE Warehouse_Orders_Requests (
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '요청 수정 날짜'
 );
 
-
-
 CREATE TABLE Review (
     review_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     customer_id BIGINT NOT NULL COMMENT '리뷰 작성자',
@@ -503,11 +501,107 @@ CREATE TABLE Review (
     image VARCHAR(255) NULL COMMENT '첨부 사진'
 );
 
--- Stores 테이블의 open_time, close_time을 TIME 형식으로 수정
+CREATE TABLE Employee_Store_Assignments (
+    assignment_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '직원-매장 근무 배정 PK',
+    
+    employee_id BIGINT NOT NULL COMMENT '직원 ID',
+    store_id BIGINT NOT NULL COMMENT '매장 ID',
+
+    department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀') NOT NULL COMMENT '소속 부서',
+
+    assigned_at DATE NOT NULL COMMENT '배정 시작일',
+    ended_at DATE NULL COMMENT '배정 종료일 (NULL이면 현재 근무 중)',
+
+    status ENUM('근무 중', '전출', '종료', '휴직', '파견') NOT NULL DEFAULT '근무 중' COMMENT '근무 상태',
+
+    notes VARCHAR(255) NULL COMMENT '기타 비고 또는 변경 사유',
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '등록 일시',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정 일시',
+
+    CONSTRAINT FK_ESA_Employee FOREIGN KEY (employee_id) REFERENCES Employees(employee_id),
+    CONSTRAINT FK_ESA_Store FOREIGN KEY (store_id) REFERENCES Stores(store_id)
+);
+
+CREATE TABLE return_inspection (
+    inspection_id     BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '검수 고유 ID',
+    return_id         BIGINT NOT NULL COMMENT '환불/교환 요청 ID',
+    inspector         VARCHAR(100) NOT NULL COMMENT '검수 담당자',
+    inspection_result ENUM('PASS', 'FAIL') NOT NULL COMMENT '검수 결과: PASS = 재입고, FAIL = 폐기',
+    inspected_date    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '검수 일시',
+    inspection_comment VARCHAR(255) NULL COMMENT '메모 (오염, 파손 등)',
+    
+    CONSTRAINT fk_inspection_return FOREIGN KEY (return_id) REFERENCES order_return(return_id)
+);
+
+-- 2. 외래키 제약 조건 추가
 ALTER TABLE Stores MODIFY open_time TIME;
 ALTER TABLE Stores MODIFY close_time TIME;
 
--- 2. 외래키 제약 조건 추가
+ALTER TABLE Employees
+ADD COLUMN department ENUM(
+    '매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀'
+) NULL COMMENT '소속 부서';
+
+ALTER TABLE Employee_Store_Assignments
+ADD COLUMN department ENUM(
+    '매장팀', '물류팀', '배송팀', '고객지원팀', 'HR팀', '마케팅팀', '재무팀', '기획팀'
+) NULL COMMENT '배정 부서';
+
+ALTER TABLE Employee_Store_Assignments
+DROP COLUMN role;
+
+ALTER TABLE Employee_Store_Assignments
+MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '배정 부서';
+
+ALTER TABLE Employees
+MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '부서';
+
+-- 1. 매장 발주 요청 테이블
+ALTER TABLE Store_Order_Requests
+ADD COLUMN requested_by BIGINT NULL COMMENT '발주 요청자 ID',
+ADD COLUMN approved_by BIGINT NULL COMMENT '발주 승인자 ID',
+ADD CONSTRAINT FK_SOR_RequestedBy FOREIGN KEY (requested_by) REFERENCES Employees(employee_id),
+ADD CONSTRAINT FK_SOR_ApprovedBy FOREIGN KEY (approved_by) REFERENCES Employees(employee_id);
+
+-- 2. 물류센터 발주 요청 테이블
+ALTER TABLE Warehouse_Orders_Requests
+ADD COLUMN requested_by BIGINT NULL COMMENT '물류센터 발주 요청자 ID',
+ADD COLUMN approved_by BIGINT NULL COMMENT '물류센터 발주 승인자 ID',
+ADD CONSTRAINT FK_WOR_RequestedBy FOREIGN KEY (requested_by) REFERENCES Employees(employee_id),
+ADD CONSTRAINT FK_WOR_ApprovedBy FOREIGN KEY (approved_by) REFERENCES Employees(employee_id);
+
+ALTER TABLE Warehouse_Orders_Requests
+MODIFY COLUMN requested_by BIGINT NULL COMMENT '물류센터 입출고 요청자 ID',
+MODIFY COLUMN approved_by  BIGINT NULL COMMENT '물류센터 입출고 승인자 ID';
+
+ALTER TABLE Store_Inventory
+  ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
+
+ALTER TABLE Warehouse_Inventory
+  ADD COLUMN location VARCHAR(255) NULL COMMENT '상품 위치';
+  
+ALTER TABLE Store_Inventory
+  ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+
+ALTER TABLE Warehouse_Inventory
+  ADD COLUMN expiration_date TIMESTAMP null COMMENT '유통기한';
+
+show tables;
+ALTER TABLE Employees
+  ADD COLUMN birth_date DATE NULL COMMENT '직원 생년월일'; -- 0.094 sec
+  
+ALTER TABLE Store_Order_Requests
+  DROP COLUMN quantity; -- 0.078 sec
+
+ALTER TABLE Store_Order_Requests
+  ADD COLUMN reason VARCHAR(255) NULL COMMENT '발주 사유'; -- 0.047 sec
+
+ALTER TABLE Warehouse_Orders_Requests
+  ADD COLUMN store_request_id BIGINT NULL COMMENT '연결된 매장 발주 요청 ID',
+  ADD CONSTRAINT FK_WOR_StoreRequest
+  FOREIGN KEY (store_request_id) REFERENCES Store_Order_Requests(request_id);
+
 ALTER TABLE Warehouse_Orders_Log
   ADD CONSTRAINT FK_WOL_Request
   FOREIGN KEY (request_id) REFERENCES Warehouse_Orders_Requests(request_id);
@@ -736,10 +830,6 @@ ALTER TABLE Warehouse_Orders_Requests
   ADD CONSTRAINT FK_WOR_Warehouses
   FOREIGN KEY (warehouse_id) REFERENCES Warehouses(warehouse_id);
 
-
 ALTER TABLE `online_card`
 MODIFY COLUMN `issuer_code` VARCHAR(2) NOT NULL COMMENT '카드 발급사 코드',
 MODIFY COLUMN `acquirer_code` VARCHAR(2) NOT NULL COMMENT '카드 매입사 코드';
-
-
-  
