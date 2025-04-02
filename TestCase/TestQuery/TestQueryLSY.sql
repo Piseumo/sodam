@@ -550,8 +550,6 @@ LEFT JOIN (
     GROUP BY `매장 ID`
 ) ca ON s.store_id = ca.`매장 ID`;
 
-drop procedure sp_store_sales_report;
-
 -- 매출 보고서 프로시저 적용 INDEX
 CREATE INDEX idx_payment_paid_at ON Offline_Payment(paid_at, status);
 
@@ -781,8 +779,6 @@ END //
 
 DELIMITER ;
 
-SHOW EVENTS;
-
 SELECT count(*) FROM Store_Sales_Summary;
 
 DROP PROCEDURE sp_get_sales_summary_range;
@@ -949,3 +945,45 @@ CALL sp_get_sales_summary_year(3, '2025-01-01', 'total', '', 'asc');
 
 -- 📅 커스텀 기간 (custom)
 CALL sp_get_sales_summary_range(3, 'custom', '2025-01-01', '2025-03-20', 'total', 'report_date', 'asc');
+
+ALTER EVENT daily_store_sales_summary DISABLE;
+ALTER EVENT daily_store_sales_summary ENABLE;
+
+show triggers;
+DROP TRIGGER IF EXISTS trg_offline_payment_status_update;
+DROP TRIGGER IF EXISTS trg_warehouse_order_status_update;
+DROP TRIGGER IF EXISTS trg_store_order_status_update;
+DROP TRIGGER IF EXISTS trg_order_cancel_sync;
+
+ALTER TABLE Employees
+MODIFY COLUMN department ENUM(
+  '매장팀', '물류팀', '배송팀', '고객지원팀'
+) NULL COMMENT '소속 부서';
+
+ALTER TABLE Employee_Store_Assignments
+MODIFY COLUMN department ENUM(
+  '매장팀', '물류팀', '배송팀', '고객지원팀'
+) NULL COMMENT '배정 부서';
+
+ALTER TABLE Employees
+MODIFY COLUMN role ENUM(
+  -- 매장팀
+  '매장 총괄 관리자', '매장 운영 관리자', '매장 재고 관리자', 
+  '매장 주문 담당자', '매장 캐셔', '매장 CS 담당자',
+
+  -- 물류팀
+  '물류센터장', '물류 입고 담당자', '물류 출고 담당자',
+  '물류 재고 관리자', '온라인 주문 출고자', '검수 담당자',
+
+  -- 배송팀
+  '배송 기사',
+
+  -- 고객지원팀
+  '고객 문의 담당자', '반품 처리 담당자'
+) NULL COMMENT '직원 역할';
+
+ALTER TABLE Employees
+ADD COLUMN position ENUM('점장', '운영 관리자', '파트장', '팀장', '일반 직원') NULL COMMENT '직급';
+
+ALTER TABLE Employees
+ADD COLUMN is_supervisor BOOLEAN NOT NULL DEFAULT FALSE COMMENT '관리자 여부';
