@@ -954,6 +954,7 @@ DROP TRIGGER IF EXISTS trg_offline_payment_status_update;
 DROP TRIGGER IF EXISTS trg_warehouse_order_status_update;
 DROP TRIGGER IF EXISTS trg_store_order_status_update;
 DROP TRIGGER IF EXISTS trg_order_cancel_sync;
+DROP TRIGGER IF EXISTS trg_validate_employee_role_update;
 
 ALTER TABLE Employees
 MODIFY COLUMN department ENUM(
@@ -987,3 +988,12 @@ ADD COLUMN position ENUM('점장', '운영 관리자', '파트장', '팀장', '�
 
 ALTER TABLE Employees
 ADD COLUMN is_supervisor BOOLEAN NOT NULL DEFAULT FALSE COMMENT '관리자 여부';
+
+ALTER TABLE Employees
+MODIFY COLUMN position ENUM('센터장', '점장', '운영 관리자', '파트장', '일반 직원') 
+NULL COMMENT '직급';
+
+ALTER TABLE Employees
+MODIFY COLUMN location_type ENUM('매장', '물류센터', '고객센터') 
+NOT NULL COMMENT '근무 장소';
+
