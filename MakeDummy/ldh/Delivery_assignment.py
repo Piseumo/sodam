@@ -109,8 +109,22 @@ def get_driver_area(zone):
     else:
         return 'I'
 
-# delivery_assignment 테이블에 더미 데이터 삽입
+# delivery_assignment 테이블에 더미 데이터 삽입 (중복된 order_id를 확인 후 삽입)
 for order_id, receiver_address in orders:
+    # "order_id"가 이미 delivery_assignment에 존재하는지 확인
+    query_check_order = """
+        SELECT COUNT(*) 
+        FROM delivery_assignment 
+        WHERE order_id = %s;
+    """
+    cursor.execute(query_check_order, (order_id,))
+    order_exists = cursor.fetchone()[0]
+
+    # 만약 order_id가 이미 존재하면 건너뛰기
+    if order_exists > 0:
+        print(f"Skipping order_id {order_id}, already assigned.")
+        continue
+
     # 지역 계산
     area = get_area(receiver_address)  # receiver_address에 따른 지역
     # 드라이버가 해당 지역에 있을 경우만 할당
