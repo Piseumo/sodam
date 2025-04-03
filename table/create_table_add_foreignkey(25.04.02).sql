@@ -551,11 +551,65 @@ ADD COLUMN department ENUM(
 ALTER TABLE Employee_Store_Assignments
 DROP COLUMN role;
 
-ALTER TABLE Employee_Store_Assignments
-MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '배정 부서';
+ALTER TABLE Employees
+ADD COLUMN is_supervisor BOOLEAN NOT NULL DEFAULT FALSE COMMENT '관리자 여부';
 
 ALTER TABLE Employees
-MODIFY COLUMN department ENUM('매장팀', '물류팀', '배송팀', '고객지원팀') NULL COMMENT '부서';
+ADD COLUMN position ENUM('센터장', '점장', '운영 관리자', '파트장', '일반 직원') 
+NULL COMMENT '직급';
+
+ALTER TABLE Employees
+MODIFY COLUMN location_type ENUM('매장', '물류센터', '고객센터') 
+NOT NULL COMMENT '근무 장소';
+
+ALTER TABLE Employees
+MODIFY COLUMN role ENUM(
+  '점장',
+  '운영 담당자',
+  '재고 담당자',
+  '발주 담당자',
+  '캐셔',
+  '고객응대 담당자',
+  '센터장',
+  '입고 담당자',
+  '출고 담당자',
+  '재고 관리자',
+  '온라인 주문 담당자',
+  '검수 담당자',
+  '배송 기사',
+  'QnA 담당자',
+  '반품 담당자'
+) NOT NULL COMMENT '직무(역할)';
+
+ALTER TABLE Employees
+MODIFY COLUMN department ENUM(
+  '매장운영팀',
+  '재고팀',
+  '발주팀',
+  '매장영업팀',
+  '고객응대팀',
+  '물류운영팀',
+  '온라인팀',
+  '품질관리팀',
+  '배송팀',
+  '고객지원팀',
+  '반품처리팀'
+) NOT NULL COMMENT '소속 부서';
+
+ALTER TABLE employee_store_assignments
+MODIFY COLUMN department ENUM(
+  '매장운영팀',
+  '재고팀',
+  '발주팀',
+  '매장영업팀',
+  '고객응대팀',
+  '물류운영팀',
+  '온라인팀',
+  '품질관리팀',
+  '배송팀',
+  '고객지원팀',
+  '반품처리팀'
+) NOT NULL COMMENT '배정 부서';
 
 -- 1. 매장 발주 요청 테이블
 ALTER TABLE Store_Order_Requests

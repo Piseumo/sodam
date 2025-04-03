@@ -956,44 +956,211 @@ DROP TRIGGER IF EXISTS trg_store_order_status_update;
 DROP TRIGGER IF EXISTS trg_order_cancel_sync;
 DROP TRIGGER IF EXISTS trg_validate_employee_role_update;
 
-ALTER TABLE Employees
-MODIFY COLUMN department ENUM(
-  '매장팀', '물류팀', '배송팀', '고객지원팀'
-) NULL COMMENT '소속 부서';
+SELECT 
+    esa.employee_id,
+    e.name AS employee_name,
+    e.role,
+    esa.store_id,
+    s.name AS store_name,
+    esa.assigned_at,
+    DATEDIFF(CURDATE(), esa.assigned_at) AS days_worked
+FROM Employee_Store_Assignments esa
+JOIN Employees e ON esa.employee_id = e.employee_id
+JOIN Stores s ON esa.store_id = s.store_id
+WHERE esa.status = '근무 중'
+ORDER BY days_worked DESC;
 
-ALTER TABLE Employee_Store_Assignments
-MODIFY COLUMN department ENUM(
-  '매장팀', '물류팀', '배송팀', '고객지원팀'
-) NULL COMMENT '배정 부서';
+SELECT 
+    esa.store_id,
+    s.name AS store_name,
+    COUNT(*) AS 직원수,
+    ROUND(AVG(
+        DATEDIFF(
+            IFNULL(esa.ended_at, CURDATE()),
+            esa.assigned_at
+        )
+    )) AS 평균_근속일
+FROM Employee_Store_Assignments esa
+JOIN Stores s ON esa.store_id = s.store_id
+GROUP BY esa.store_id, s.name
+ORDER BY 평균_근속일 DESC;
 
-ALTER TABLE Employees
-MODIFY COLUMN role ENUM(
-  -- 매장팀
-  '매장 총괄 관리자', '매장 운영 관리자', '매장 재고 관리자', 
-  '매장 주문 담당자', '매장 캐셔', '매장 CS 담당자',
+DROP PROCEDURE sp_insight_assignment_diff;
+-- 특정 정책 도입 전후 인력 분포 비교
+DELIMITER //
 
-  -- 물류팀
-  '물류센터장', '물류 입고 담당자', '물류 출고 담당자',
-  '물류 재고 관리자', '온라인 주문 출고자', '검수 담당자',
+CREATE PROCEDURE sp_insight_assignment_diff (
+    IN p_store_id BIGINT,
+    IN p_ref_date DATE
+)
+BEGIN
+    IF p_store_id IS NULL THEN
+        -- ✅ 모든 매장 조회
+        SELECT
+            s.store_id AS `매장 ID`,
+            s.name AS `매장명`,
 
-  -- 배송팀
-  '배송 기사',
+            COUNT(CASE 
+                WHEN esa.assigned_at <= p_ref_date 
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date) 
+                THEN 1 END) AS `기준일 당시 재직 인원`,
 
-  -- 고객지원팀
-  '고객 문의 담당자', '반품 처리 담당자'
-) NULL COMMENT '직원 역할';
+            COUNT(CASE 
+                WHEN esa.assigned_at > p_ref_date 
+                THEN 1 END) AS `기준일 이후 신규 배정 인원`,
 
-ALTER TABLE Employees
-ADD COLUMN position ENUM('점장', '운영 관리자', '파트장', '팀장', '일반 직원') NULL COMMENT '직급';
+            COUNT(CASE 
+                WHEN esa.ended_at IS NOT NULL AND esa.ended_at > p_ref_date 
+                THEN 1 END) AS `기준일 이후 퇴직 인원`,
 
-ALTER TABLE Employees
-ADD COLUMN is_supervisor BOOLEAN NOT NULL DEFAULT FALSE COMMENT '관리자 여부';
+            (
+                COUNT(CASE 
+                    WHEN esa.assigned_at > p_ref_date THEN 1 END)
+                -
+                COUNT(CASE 
+                    WHEN esa.ended_at IS NOT NULL AND esa.ended_at > p_ref_date THEN 1 END)
+            ) AS `순 인원 변화`
 
-ALTER TABLE Employees
-MODIFY COLUMN position ENUM('센터장', '점장', '운영 관리자', '파트장', '일반 직원') 
-NULL COMMENT '직급';
+        FROM Stores s
+        LEFT JOIN Employee_Store_Assignments esa ON s.store_id = esa.store_id
+        GROUP BY s.store_id, s.name;
 
-ALTER TABLE Employees
-MODIFY COLUMN location_type ENUM('매장', '물류센터', '고객센터') 
-NOT NULL COMMENT '근무 장소';
+    ELSE
+        -- ✅ 특정 매장만 조회
+        SELECT
+            s.store_id AS `매장 ID`,
+            s.name AS `매장명`,
 
+            COUNT(CASE 
+                WHEN esa.assigned_at <= p_ref_date 
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date) 
+                THEN 1 END) AS `기준일 당시 재직 인원`,
+
+            COUNT(CASE 
+                WHEN esa.assigned_at > p_ref_date 
+                THEN 1 END) AS `기준일 이후 신규 배정 인원`,
+
+            COUNT(CASE 
+                WHEN esa.ended_at IS NOT NULL AND esa.ended_at > p_ref_date 
+                THEN 1 END) AS `기준일 이후 퇴직 인원`,
+
+            (
+                COUNT(CASE 
+                    WHEN esa.assigned_at > p_ref_date THEN 1 END)
+                -
+                COUNT(CASE 
+                    WHEN esa.ended_at IS NOT NULL AND esa.ended_at > p_ref_date THEN 1 END)
+            ) AS `순 인원 변화`
+
+        FROM Stores s
+        LEFT JOIN Employee_Store_Assignments esa ON s.store_id = esa.store_id
+        WHERE s.store_id = p_store_id
+        GROUP BY s.store_id, s.name;
+    END IF;
+END //
+
+DELIMITER ;
+
+
+CALL sp_insight_assignment_diff(3, '2025-01-01');
+CALL sp_insight_assignment_diff(null, '2025-01-01');
+
+drop procedure sp_admin_assignment_summary;
+-- 관리자별 인사관리 현황 비교
+DELIMITER //
+
+CREATE PROCEDURE sp_admin_assignment_summary (
+    IN p_ref_date DATE
+)
+BEGIN
+    SELECT
+        e.employee_id AS supervisor_id,
+        e.name AS supervisor_name,
+        s.store_id,
+        s.name AS store_name,
+        COUNT(esa.assignment_id) AS total_assignments,
+        SUM(CASE 
+            WHEN esa.assigned_at <= p_ref_date AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date) 
+            THEN 1 ELSE 0 END) AS current_employees,
+        SUM(CASE 
+            WHEN esa.ended_at <= p_ref_date THEN 1 ELSE 0 END) AS retired_employees,
+        ROUND(AVG(
+            DATEDIFF(
+                IFNULL(esa.ended_at, p_ref_date),
+                esa.assigned_at
+            )
+        )) AS avg_days_assigned
+    FROM Stores s
+    JOIN Employees e ON s.manager_id = e.employee_id AND e.is_supervisor = TRUE
+    LEFT JOIN Employee_Store_Assignments esa ON esa.store_id = s.store_id
+    GROUP BY e.employee_id, e.name, s.store_id, s.name
+    ORDER BY current_employees DESC;
+END //
+
+DELIMITER ;
+
+CALL sp_admin_assignment_summary('2025-04-01');
+
+DROP PROCEDURE sp_insight_assignment_tenure;
+-- 근속 기간 분포 통계
+DELIMITER //
+
+CREATE PROCEDURE sp_insight_assignment_tenure (
+    IN p_store_id BIGINT,
+    IN p_ref_date DATE
+)
+BEGIN
+    IF p_store_id IS NULL THEN
+        -- 전체 매장
+        SELECT
+            s.store_id AS `매장 ID`,
+            s.name AS `매장명`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) < 1 
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date) 
+                THEN 1 END) AS `0~1년 미만`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) >= 1 
+                     AND TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) < 3
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date)
+                THEN 1 END) AS `1~3년 미만`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) >= 3
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date)
+                THEN 1 END) AS `3년 이상`
+        FROM Stores s
+        LEFT JOIN Employee_Store_Assignments esa ON s.store_id = esa.store_id
+        GROUP BY s.store_id, s.name;
+
+    ELSE
+        -- 특정 매장
+        SELECT
+            s.store_id AS `매장 ID`,
+            s.name AS `매장명`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) < 1 
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date) 
+                THEN 1 END) AS `0~1년 미만`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) >= 1 
+                     AND TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) < 3
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date)
+                THEN 1 END) AS `1~3년 미만`,
+            COUNT(CASE 
+                WHEN TIMESTAMPDIFF(YEAR, esa.assigned_at, p_ref_date) >= 3
+                     AND (esa.ended_at IS NULL OR esa.ended_at > p_ref_date)
+                THEN 1 END) AS `3년 이상`
+        FROM Stores s
+        LEFT JOIN Employee_Store_Assignments esa ON s.store_id = esa.store_id
+        WHERE s.store_id = p_store_id
+        GROUP BY s.store_id, s.name;
+    END IF;
+END //
+
+DELIMITER ;
+
+-- 전체 매장 근속 통계 (2025년 3월 기준)
+CALL sp_insight_assignment_tenure(NULL, '2025-03-01');
+
+-- 특정 매장 근속 통계
+CALL sp_insight_assignment_tenure(2, '2025-03-01');

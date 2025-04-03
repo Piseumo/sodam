@@ -22,25 +22,31 @@ cursor.execute("TRUNCATE TABLE Stores;")
 cursor.execute("TRUNCATE TABLE Warehouses;")
 cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
 conn.commit()
-print("✅ 기존 데이터 삭제 완료!")
 
-# ✅ (2) 역할별 메타정보 설정
+# ✅ (2) 역할별 메타정보 설정 (새로운 role + department 구조 적용)
 role_meta = {
-    '매장 총괄 관리자': ('매장팀', '매장', '점장', True),
-    '매장 운영 관리자': ('매장팀', '매장', '운영 관리자', True),
-    '매장 재고 관리자': ('매장팀', '매장', '파트장', True),
-    '매장 주문 담당자': ('매장팀', '매장', '일반 직원', False),
-    '매장 캐셔': ('매장팀', '매장', '일반 직원', False),
-    '매장 CS 담당자': ('매장팀', '매장', '일반 직원', False),
-    '물류센터장': ('물류팀', '물류센터', '센터장', True),
-    '물류 입고 담당자': ('물류팀', '물류센터', '파트장', True),
-    '물류 출고 담당자': ('물류팀', '물류센터', '파트장', True),
-    '물류 재고 관리자': ('물류팀', '물류센터', '파트장', True),
-    '온라인 주문 출고자': ('물류팀', '물류센터', '일반 직원', False),
-    '검수 담당자': ('물류팀', '물류센터', '일반 직원', False),
+    # 매장
+    '점장': ('매장운영팀', '매장', '점장', True),
+    '운영 담당자': ('매장운영팀', '매장', '운영 관리자', True),
+    '재고 담당자': ('재고팀', '매장', '파트장', True),
+    '발주 담당자': ('발주팀', '매장', '일반 직원', False),
+    '캐셔': ('매장영업팀', '매장', '일반 직원', False),
+    '고객응대 담당자': ('고객응대팀', '매장', '일반 직원', False),
+
+    # 물류
+    '센터장': ('물류운영팀', '물류센터', '센터장', True),
+    '입고 담당자': ('물류운영팀', '물류센터', '파트장', True),
+    '출고 담당자': ('물류운영팀', '물류센터', '파트장', True),
+    '재고 관리자': ('재고팀', '물류센터', '파트장', True),
+    '온라인 주문 담당자': ('온라인팀', '물류센터', '일반 직원', False),
+    '검수 담당자': ('품질관리팀', '물류센터', '일반 직원', False),
+
+    # 배송
     '배송 기사': ('배송팀', '물류센터', '일반 직원', False),
-    '고객 문의 담당자': ('고객지원팀', '고객센터', '일반 직원', False),
-    '반품 처리 담당자': ('고객지원팀', '고객센터', '일반 직원', False),
+
+    # 고객지원
+    'QnA 담당자': ('고객지원팀', '고객센터', '일반 직원', False),
+    '반품 담당자': ('반품처리팀', '고객센터', '일반 직원', False),
 }
 roles = list(role_meta.keys())
 
@@ -58,7 +64,7 @@ cursor.execute("""
     INSERT INTO Employees (name, phone, email, role, department, hire_date, salary, location_type, insurance, birth_date, position, is_supervisor)
     VALUES (%s, %s, %s, %s, %s, CURDATE(), %s, %s, TRUE, %s, %s, %s)
 """, (
-    'Dummy Manager', '010-0000-0000', 'dummy@company.com', '매장 총괄 관리자', '매장팀', 0, '매장', fake.date_of_birth(minimum_age=40, maximum_age=60), '점장', True
+    'Dummy Manager', '010-0000-0000', 'dummy@company.com', '점장', '매장운영팀', 0, '매장', fake.date_of_birth(minimum_age=40, maximum_age=60), '점장', True
 ))
 dummy_manager_id = cursor.lastrowid
 conn.commit()
@@ -95,7 +101,7 @@ for store_id in store_ids.values():
         VALUES (%s, %s, %s, %s, %s, %s, CURDATE(), %s, %s, TRUE, %s, %s, %s)
     """, (
         fake.name(), fake.phone_number(), fake.email(), store_id,
-        '매장 총괄 관리자', '매장팀', random.randint(5000000, 7000000), '매장', birth, '점장', True
+        '점장', '매장운영팀', random.randint(5000000, 7000000), '매장', birth, '점장', True
     ))
 
 cursor.execute("""
@@ -103,12 +109,12 @@ cursor.execute("""
     VALUES (%s, %s, %s, %s, %s, %s, CURDATE(), %s, %s, TRUE, %s, %s, %s)
 """, (
     fake.name(), fake.phone_number(), fake.email(), warehouse_id,
-    '물류센터장', '물류팀', random.randint(6000000, 8000000), '물류센터', fake.date_of_birth(minimum_age=40, maximum_age=65), '센터장', True
+    '센터장', '물류운영팀', random.randint(6000000, 8000000), '물류센터', fake.date_of_birth(minimum_age=40, maximum_age=65), '센터장', True
 ))
 conn.commit()
 
 # ✅ (8) 나머지 직원 299,994명 삽입
-excluded_roles = {'매장 총괄 관리자', '물류센터장'}
+excluded_roles = {'점장', '센터장'}
 num_employees = 300_000 - 6
 batch_size = 10000
 inserted = 0
@@ -133,12 +139,12 @@ while inserted < num_employees:
 
 # ✅ 점장 및 센터장으로 매장 관리자 업데이트
 for store_id in store_ids.values():
-    cursor.execute("SELECT employee_id FROM Employees WHERE store_id = %s AND role = '매장 총괄 관리자' LIMIT 1", (store_id,))
+    cursor.execute("SELECT employee_id FROM Employees WHERE store_id = %s AND role = '점장' LIMIT 1", (store_id,))
     manager_id = cursor.fetchone()
     if manager_id:
         cursor.execute("UPDATE Stores SET manager_id = %s WHERE store_id = %s", (manager_id[0], store_id))
 
-cursor.execute("SELECT employee_id FROM Employees WHERE warehouse_id = 1 AND role = '물류센터장' LIMIT 1")
+cursor.execute("SELECT employee_id FROM Employees WHERE warehouse_id = 1 AND role = '센터장' LIMIT 1")
 manager_id = cursor.fetchone()
 if manager_id:
     cursor.execute("UPDATE Warehouses SET manager_id = %s WHERE warehouse_id = 1", (manager_id[0],))
@@ -149,4 +155,5 @@ conn.commit()
 
 cursor.close()
 conn.close()
+
 print("✅ 30만명 직원 및 관리자 구성 완료!")
