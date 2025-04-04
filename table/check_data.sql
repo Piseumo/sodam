@@ -45,6 +45,3 @@ SELECT COUNT(*) FROM Point;
 SELECT COUNT(*) FROM Review;
 SELECT COUNT(*) FROM Employee_Store_Assignments;
 SELECT COUNT(*) FROM Store_Sales_Summary;
-
-select * from employees;
-select * from Employee_Store_Assignments;
