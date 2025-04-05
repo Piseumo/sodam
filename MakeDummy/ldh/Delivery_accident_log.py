@@ -2,6 +2,7 @@ import mysql.connector
 from faker import Faker
 import random
 from datetime import datetime, timedelta
+import logging
 
 # Faker 객체 생성
 fake = Faker('ko_KR')
@@ -62,7 +63,7 @@ def generate_accident_log(delivery_id):
     cursor.execute("""
         SELECT employee_id 
         FROM Employees 
-        WHERE role = '물류 출고 담당자'
+        WHERE role = '온라인팀'
     """)
     employees = cursor.fetchall()
     
@@ -92,7 +93,11 @@ def generate_accident_log(delivery_id):
     cursor.execute(insert_query, (employee_id, delivery_id, log_type, text, status, accident_date, report_date, complete_date))
     db.commit()
 
-    print(f"Accident log for delivery_id {delivery_id} added. Status: {status}, Accident Date: {accident_date}, Report Date: {report_date}")
+    # 로그 기록 추가
+    logging.info(f"Accident log for delivery_id {delivery_id} added. Status: {status}, Accident Date: {accident_date}, Report Date: {report_date}")
+
+# 로그 파일 설정
+logging.basicConfig(filename='accident_log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Delivery 테이블에서 '배송중사고'인 항목에 대해 사고 로그 생성
 cursor.execute("""
