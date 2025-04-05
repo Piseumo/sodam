@@ -1164,3 +1164,42 @@ CALL sp_insight_assignment_tenure(NULL, '2025-03-01');
 
 -- 특정 매장 근속 통계
 CALL sp_insight_assignment_tenure(2, '2025-03-01');
+
+-- 매장 발주 흐름 추적
+
+DELIMITER //
+
+CREATE PROCEDURE sp_get_order_flow_history (
+    IN p_store_id BIGINT,
+    IN p_start_date DATE,
+    IN p_end_date DATE
+)
+BEGIN
+    SELECT 
+        sor.request_id AS 요청ID,
+        s.name AS 매장명,
+        e1.name AS 요청자,
+        e2.name AS 승인자,
+        sor.reason AS 발주사유,
+        sor.status AS 최종상태,
+        sor.created_at AS 요청일자,
+        sor.updated_at AS 수정일자,
+        sol.status AS 상태이력,
+        sol.changed_at AS 변경일자
+    FROM store_order_requests sor
+    JOIN store_order_logs sol ON sor.request_id = sol.request_id
+    JOIN stores s ON sor.store_id = s.store_id
+    LEFT JOIN employees e1 ON sor.requested_by = e1.employee_id
+    LEFT JOIN employees e2 ON sor.approved_by = e2.employee_id
+    WHERE (p_store_id IS NULL OR sor.store_id = p_store_id)
+      AND sol.changed_at BETWEEN p_start_date AND p_end_date
+    ORDER BY sol.changed_at ASC;
+END //
+
+DELIMITER ;
+
+CALL sp_get_order_flow_history(NULL, '2024-11-01', '2025-04-05');
+-- 전체 매장 발주 흐름 조회
+
+CALL sp_get_order_flow_history(3, '2025-01-01', '2025-03-31');
+-- 특정 매장 발주 흐름 조회
