@@ -14,8 +14,8 @@ db = mysql.connector.connect(
 # 커서 생성
 cursor = db.cursor()
 
-# delivery_assignment 테이블에서 assignment_id 가져오기 (최대 20개)
-query = "SELECT assignment_id FROM delivery_assignment LIMIT 20;"
+# delivery_assignment 테이블에서 assignment_id 가져오기
+query = "SELECT assignment_id FROM delivery_assignment;"
 cursor.execute(query)
 
 # 쿼리 결과 가져오기
@@ -41,10 +41,12 @@ for assignment_id_tuple in assignment_ids:
         print(f"Skipping assignment_id={assignment_id} as it already exists in delivery table.")
         continue
 
-    # 상태와 요청 유형 설정
-    status_options = ['배송완료', '배송중사고']
-    status = random.choice(status_options)  # 배송완료 또는 배송중사고 랜덤 선택
-    request_type = '일반배송'  # 모든 값은 '일반배송'으로 고정
+    # 상태 설정
+    status = '배송완료'  # 기본적으로 배송완료로 설정
+    if random.random() <= 0.05:  # 10% 확률로 배송중사고
+        status = '배송중사고'
+    
+    request_type = '일반배송'  # request_type은 항상 '일반배송'으로 설정
     
     # start_date는 오늘로부터 3일 전
     start_date = datetime.now() - timedelta(days=3)
